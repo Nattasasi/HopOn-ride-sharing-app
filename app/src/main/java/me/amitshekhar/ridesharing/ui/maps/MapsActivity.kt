@@ -1,7 +1,7 @@
 package com.tritech.hopon.ui.maps
 
-import android.annotation.SuppressLint
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -13,7 +13,11 @@ import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.app.ActivityCompat
+import androidx.transition.TransitionManager
 import com.google.android.gms.common.api.Status
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -37,34 +41,40 @@ import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.widget.Autocomplete
 import com.google.android.libraries.places.widget.AutocompleteActivity
 import com.google.android.libraries.places.widget.model.AutocompleteActivityMode
+import com.tritech.hopon.BuildConfig
 import com.tritech.hopon.R
 import com.tritech.hopon.data.network.NetworkService
 import com.tritech.hopon.databinding.ActivityMapsBinding
+import com.tritech.hopon.ui.auth.LoginActivity
 import com.tritech.hopon.utils.AnimationUtils
 import com.tritech.hopon.utils.MapUtils
 import com.tritech.hopon.utils.PermissionUtils
+import com.tritech.hopon.utils.SessionManager
 import com.tritech.hopon.utils.ViewUtils
-import com.tritech.hopon.ui.navigation.NavigationActivity
 
 class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     companion object {
         private const val TAG = "MapsActivity"
         private const val LOCATION_PERMISSION_REQUEST_CODE = 999
-        private const val PICKUP_REQUEST_CODE = 1
-        private const val DROP_REQUEST_CODE = 2
+        private const val PLACE_REQUEST_CODE = 1
     }
 
+    private data class PlaceholderPlace(val name: String, val latLng: LatLng)
+
     private lateinit var binding: ActivityMapsBinding
-    private lateinit var presenter: MapsPresenter
     private lateinit var googleMap: GoogleMap
+    private var isMapReady = false
+    private var presenter: MapsPresenter? = null
     private var fusedLocationProviderClient: FusedLocationProviderClient? = null
     private lateinit var locationCallback: LocationCallback
-    private lateinit var autocompleteLauncher: ActivityResultLauncher<Intent>
+    private var autocompleteLauncher: ActivityResultLauncher<Intent>? = null
     private var pendingAutocompleteRequestCode: Int? = null
+
     private var currentLatLng: LatLng? = null
     private var pickUpLatLng: LatLng? = null
     private var dropLatLng: LatLng? = null
+
     private val nearbyCabMarkerList = arrayListOf<Marker>()
     private var destinationMarker: Marker? = null
     private var originMarker: Marker? = null
@@ -73,54 +83,179 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var previousLatLngFromServer: LatLng? = null
     private var currentLatLngFromServer: LatLng? = null
     private var movingCabMarker: Marker? = null
+    private var isSearchBarAtTop = false
+
+    private val placeholderPlaces = listOf(
+        PlaceholderPlace("Siam Paragon", LatLng(13.7466, 100.5347)),
+        PlaceholderPlace("CentralWorld", LatLng(13.7460, 100.5395)),
+        PlaceholderPlace("Terminal 21", LatLng(13.7373, 100.5607))
+    )
+    private var placeholderPlaceIndex = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (!SessionManager.isLoggedIn(this)) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
         binding = ActivityMapsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        autocompleteLauncher = registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            handleAutocompleteResult(result.resultCode, result.data)
-        }
         ViewUtils.enableTransparentStatusBar(window)
+        setUpBackPressHandler()
+
+        if (!BuildConfig.USE_MOCK_DATA) {
+            autocompleteLauncher = registerForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                handleAutocompleteResult(result.resultCode, result.data)
+            }
+            presenter = MapsPresenter(NetworkService())
+            presenter?.onAttach(this)
+        }
+
         val mapFragment = supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
-        presenter = MapsPresenter(NetworkService())
-        presenter.onAttach(this)
+
         setUpClickListener()
     }
 
+    private fun setUpBackPressHandler() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (restoreDefaultMapUiIfNeeded()) {
+                    return
+                }
+                finish()
+            }
+        })
+    }
+
+    private fun restoreDefaultMapUiIfNeeded(): Boolean {
+        if (binding.resultPopupCard.visibility != View.VISIBLE && !isSearchBarAtTop) {
+            return false
+        }
+
+        binding.resultPopupCard.visibility = View.GONE
+        binding.createRideButton.visibility = View.GONE
+        binding.resultPlaceTextView.text = ""
+        binding.searchBarTextView.text = getString(R.string.where_to)
+        moveSearchBarToBottom()
+        return true
+    }
+
     private fun setUpClickListener() {
-        binding.pickUpTextView.setOnClickListener {
-            launchLocationAutoCompleteActivity(PICKUP_REQUEST_CODE)
+        binding.searchBarContainer.setOnClickListener {
+            if (BuildConfig.USE_MOCK_DATA) {
+                applyPlaceholderPlaceSelection()
+            } else {
+                launchLocationAutoCompleteActivity()
+            }
         }
-        binding.dropTextView.setOnClickListener {
-            launchLocationAutoCompleteActivity(DROP_REQUEST_CODE)
+        binding.searchBarTextView.setOnClickListener {
+            if (BuildConfig.USE_MOCK_DATA) {
+                applyPlaceholderPlaceSelection()
+            } else {
+                launchLocationAutoCompleteActivity()
+            }
         }
-        binding.startNavigationButton.setOnClickListener {
-            startNavigation()
+        binding.createRideButton.setOnClickListener {
+            Toast.makeText(this, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
         }
-        binding.requestCabButton.setOnClickListener {
-            binding.statusTextView.visibility = View.VISIBLE
-            binding.statusTextView.text = getString(R.string.requesting_your_cab)
-            binding.requestCabButton.isEnabled = false
-            binding.pickUpTextView.isEnabled = false
-            binding.dropTextView.isEnabled = false
-            presenter.requestCab(pickUpLatLng!!, dropLatLng!!)
-        }
-        binding.nextRideButton.setOnClickListener {
-            reset()
+        binding.bottomNav.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> true
+                R.id.nav_rides -> {
+                    Toast.makeText(this, getString(R.string.nav_rides), Toast.LENGTH_SHORT).show()
+                    true
+                }
+                R.id.nav_profile -> {
+                    logoutAndNavigateToLogin()
+                    true
+                }
+                else -> false
+            }
         }
     }
 
-    private fun launchLocationAutoCompleteActivity(requestCode: Int) {
+    private fun logoutAndNavigateToLogin() {
+        SessionManager.setLoggedIn(this, false)
+        startActivity(Intent(this, LoginActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        })
+        finish()
+    }
+
+    private fun launchLocationAutoCompleteActivity() {
         val fields: List<Place.Field> =
             listOf(Place.Field.ID, Place.Field.NAME, Place.Field.LAT_LNG)
         val intent = Autocomplete.IntentBuilder(AutocompleteActivityMode.OVERLAY, fields)
             .build(this)
-        pendingAutocompleteRequestCode = requestCode
-        autocompleteLauncher.launch(intent)
+        pendingAutocompleteRequestCode = PLACE_REQUEST_CODE
+        autocompleteLauncher?.launch(intent)
+    }
+
+    private fun handleAutocompleteResult(resultCode: Int, data: Intent?) {
+        val requestCode = pendingAutocompleteRequestCode ?: return
+        pendingAutocompleteRequestCode = null
+        if (requestCode != PLACE_REQUEST_CODE) {
+            return
+        }
+        when (resultCode) {
+            RESULT_OK -> {
+                if (data == null) {
+                    return
+                }
+                val place = Autocomplete.getPlaceFromIntent(data)
+                Log.d(TAG, "Place: " + place.name + ", " + place.id + ", " + place.latLng)
+                if (place.latLng != null) {
+                    applySelectedPlace(place.name ?: getString(R.string.where_to), place.latLng!!)
+                }
+            }
+
+            AutocompleteActivity.RESULT_ERROR -> {
+                if (data == null) {
+                    Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_LONG).show()
+                    return
+                }
+                val status: Status = Autocomplete.getStatusFromIntent(data)
+                val statusMessage = status.statusMessage ?: getString(R.string.generic_error)
+                Log.e(TAG, "Places autocomplete error: code=${status.statusCode}, message=$statusMessage")
+                Toast.makeText(this, statusMessage, Toast.LENGTH_LONG).show()
+            }
+
+            RESULT_CANCELED -> {
+                Log.d(TAG, "Place Selection Canceled")
+            }
+        }
+    }
+
+    private fun applyPlaceholderPlaceSelection() {
+        val place = placeholderPlaces[placeholderPlaceIndex % placeholderPlaces.size]
+        placeholderPlaceIndex++
+
+        applySelectedPlace(place.name, place.latLng)
+    }
+
+    private fun applySelectedPlace(name: String, latLng: LatLng) {
+        dropLatLng = latLng
+        binding.searchBarTextView.text = name
+        binding.resultPlaceTextView.text = name
+        moveSearchBarToTop()
+        binding.resultPopupCard.visibility = View.VISIBLE
+        binding.createRideButton.visibility = View.VISIBLE
+
+        if (!isMapReady) {
+            Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        destinationMarker?.remove()
+        destinationMarker = addOriginDestinationMarkerAndGet(latLng)
+        destinationMarker?.setAnchor(0.5f, 0.5f)
+        animateCamera(latLng)
     }
 
     private fun moveCamera(latLng: LatLng) {
@@ -148,12 +283,11 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun setCurrentLocationAsPickUp() {
         pickUpLatLng = currentLatLng
-        binding.pickUpTextView.text = getString(R.string.current_location)
     }
 
     @SuppressLint("MissingPermission")
     private fun enableMyLocationOnMap() {
-        googleMap.setPadding(0, ViewUtils.dpToPx(48f), 0, 0)
+        googleMap.setPadding(0, ViewUtils.dpToPx(48f), 0, ViewUtils.dpToPx(124f))
         googleMap.isMyLocationEnabled = true
     }
 
@@ -165,8 +299,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         ) {
             return
         }
+
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
-        // for getting the current location update after every 2 seconds
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
             2000L
@@ -176,22 +310,27 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 super.onLocationResult(locationResult)
-                if (currentLatLng == null) {
-                    for (location in locationResult.locations) {
-                        if (currentLatLng == null) {
-                            currentLatLng = LatLng(location.latitude, location.longitude)
-                            setCurrentLocationAsPickUp()
-                            enableMyLocationOnMap()
-                            moveCamera(currentLatLng!!)
-                            animateCamera(currentLatLng!!)
-                            presenter.requestNearbyCabs(currentLatLng!!)
+                if (currentLatLng != null) {
+                    return
+                }
+
+                for (location in locationResult.locations) {
+                    if (currentLatLng == null) {
+                        currentLatLng = LatLng(location.latitude, location.longitude)
+                        setCurrentLocationAsPickUp()
+                        enableMyLocationOnMap()
+                        moveCamera(currentLatLng!!)
+                        animateCamera(currentLatLng!!)
+                        if (BuildConfig.USE_MOCK_DATA) {
+                            showNearbyCabs(generateMockNearbyCabs(currentLatLng!!))
+                        } else {
+                            presenter?.requestNearbyCabs(currentLatLng!!)
                         }
                     }
                 }
-                // Few more things we can do here:
-                // For example: Update the location of user on server
             }
         }
+
         fusedLocationProviderClient?.requestLocationUpdates(
             locationRequest,
             locationCallback,
@@ -199,60 +338,49 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         )
     }
 
-    private fun checkAndShowRequestButton() {
-        if (pickUpLatLng !== null && dropLatLng !== null) {
-            binding.requestCabButton.visibility = View.VISIBLE
-            binding.requestCabButton.isEnabled = true
-            binding.startNavigationButton.visibility = View.VISIBLE
-            binding.startNavigationButton.isEnabled = true
-        }
+    private fun generateMockNearbyCabs(center: LatLng): List<LatLng> {
+        return listOf(
+            LatLng(center.latitude + 0.0012, center.longitude + 0.0011),
+            LatLng(center.latitude - 0.0010, center.longitude + 0.0015),
+            LatLng(center.latitude + 0.0008, center.longitude - 0.0014)
+        )
     }
 
     private fun reset() {
-        binding.statusTextView.visibility = View.GONE
-        binding.nextRideButton.visibility = View.GONE
-        binding.startNavigationButton.visibility = View.GONE
-        binding.startNavigationButton.isEnabled = false
+        binding.createRideButton.visibility = View.GONE
+        binding.resultPopupCard.visibility = View.GONE
+        binding.resultPlaceTextView.text = ""
+        binding.searchBarTextView.text = getString(R.string.where_to)
+        moveSearchBarToBottom()
+
         nearbyCabMarkerList.forEach { it.remove() }
         nearbyCabMarkerList.clear()
         previousLatLngFromServer = null
         currentLatLngFromServer = null
+
         if (currentLatLng != null) {
             moveCamera(currentLatLng!!)
             animateCamera(currentLatLng!!)
             setCurrentLocationAsPickUp()
-            presenter.requestNearbyCabs(currentLatLng!!)
-        } else {
-            binding.pickUpTextView.text = ""
+            if (BuildConfig.USE_MOCK_DATA) {
+                showNearbyCabs(generateMockNearbyCabs(currentLatLng!!))
+            } else {
+                presenter?.requestNearbyCabs(currentLatLng!!)
+            }
         }
-        binding.pickUpTextView.isEnabled = true
-        binding.dropTextView.isEnabled = true
-        binding.dropTextView.text = ""
+
         movingCabMarker?.remove()
         greyPolyLine?.remove()
         blackPolyline?.remove()
         originMarker?.remove()
         destinationMarker?.remove()
+
         dropLatLng = null
         greyPolyLine = null
         blackPolyline = null
         originMarker = null
         destinationMarker = null
         movingCabMarker = null
-    }
-
-    private fun startNavigation() {
-        val destination = dropLatLng
-        val origin = currentLatLng ?: pickUpLatLng
-
-        if (origin == null || destination == null) {
-            Toast.makeText(this, getString(R.string.navigation_missing_waypoints), Toast.LENGTH_LONG)
-                .show()
-            return
-        }
-
-        val intent = NavigationActivity.createIntent(this, origin, destination)
-        startActivity(intent)
     }
 
     override fun onStart() {
@@ -264,13 +392,11 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                         PermissionUtils.isLocationEnabled(this) -> {
                             setUpLocationListener()
                         }
-
                         else -> {
                             PermissionUtils.showGPSNotEnabledDialog(this)
                         }
                     }
                 }
-
                 else -> {
                     PermissionUtils.requestAccessFineLocationPermission(
                         this,
@@ -282,8 +408,10 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     override fun onDestroy() {
-        presenter.onDetach()
-        fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
+        presenter?.onDetach()
+        if (::locationCallback.isInitialized) {
+            fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
+        }
         super.onDestroy()
     }
 
@@ -300,7 +428,6 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                         PermissionUtils.isLocationEnabled(this) -> {
                             setUpLocationListener()
                         }
-
                         else -> {
                             PermissionUtils.showGPSNotEnabledDialog(this)
                         }
@@ -316,65 +443,70 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         }
     }
 
-    private fun handleAutocompleteResult(resultCode: Int, data: Intent?) {
-        val requestCode = pendingAutocompleteRequestCode ?: return
-        pendingAutocompleteRequestCode = null
-        if (requestCode != PICKUP_REQUEST_CODE && requestCode != DROP_REQUEST_CODE) {
+    private fun moveSearchBarToTop() {
+        if (isSearchBarAtTop) {
             return
         }
-        when (resultCode) {
-            RESULT_OK -> {
-                if (data == null) {
-                    return
-                }
-                val place = Autocomplete.getPlaceFromIntent(data)
-                Log.d(TAG, "Place: " + place.name + ", " + place.id + ", " + place.latLng)
-                when (requestCode) {
-                    PICKUP_REQUEST_CODE -> {
-                        binding.pickUpTextView.text = place.name
-                        pickUpLatLng = place.latLng
-                        checkAndShowRequestButton()
-                    }
 
-                    DROP_REQUEST_CODE -> {
-                        binding.dropTextView.text = place.name
-                        dropLatLng = place.latLng
-                        checkAndShowRequestButton()
-                    }
-                }
-            }
+        val root = binding.root as ConstraintLayout
+        val constraintSet = ConstraintSet()
+        constraintSet.clone(root)
+        constraintSet.clear(R.id.searchBarContainer, ConstraintSet.BOTTOM)
+        constraintSet.connect(
+            R.id.searchBarContainer,
+            ConstraintSet.TOP,
+            ConstraintSet.PARENT_ID,
+            ConstraintSet.TOP,
+            ViewUtils.dpToPx(56f)
+        )
+        TransitionManager.beginDelayedTransition(root)
+        constraintSet.applyTo(root)
+        isSearchBarAtTop = true
+    }
 
-            AutocompleteActivity.RESULT_ERROR -> {
-                if (data == null) {
-                    return
-                }
-                val status: Status = Autocomplete.getStatusFromIntent(data)
-                Log.d(TAG, status.statusMessage!!)
-            }
-
-            RESULT_CANCELED -> {
-                Log.d(TAG, "Place Selection Canceled")
-            }
+    private fun moveSearchBarToBottom() {
+        if (!isSearchBarAtTop) {
+            return
         }
+
+        val root = binding.root as ConstraintLayout
+        val constraintSet = ConstraintSet()
+        constraintSet.clone(root)
+        constraintSet.clear(R.id.searchBarContainer, ConstraintSet.TOP)
+        constraintSet.connect(
+            R.id.searchBarContainer,
+            ConstraintSet.BOTTOM,
+            R.id.bottomNav,
+            ConstraintSet.TOP,
+            ViewUtils.dpToPx(12f)
+        )
+        TransitionManager.beginDelayedTransition(root)
+        constraintSet.applyTo(root)
+        isSearchBarAtTop = false
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
         this.googleMap = googleMap
+        isMapReady = true
+        this.googleMap.setOnMapClickListener {
+            restoreDefaultMapUiIfNeeded()
+        }
+        this.googleMap.setOnMarkerClickListener {
+            false
+        }
     }
 
     override fun showNearbyCabs(latLngList: List<LatLng>) {
+        nearbyCabMarkerList.forEach { it.remove() }
         nearbyCabMarkerList.clear()
         for (latLng in latLngList) {
             val nearbyCabMarker = addCarMarkerAndGet(latLng)
-            nearbyCabMarkerList.add(nearbyCabMarker!!)
+            nearbyCabMarker?.let { nearbyCabMarkerList.add(it) }
         }
     }
 
     override fun informCabBooked() {
-        nearbyCabMarkerList.forEach { it.remove() }
-        nearbyCabMarkerList.clear()
-        binding.requestCabButton.visibility = View.GONE
-        binding.statusTextView.text = getString(R.string.your_cab_is_booked)
+        Toast.makeText(this, getString(R.string.your_cab_is_booked), Toast.LENGTH_SHORT).show()
     }
 
     override fun showPath(latLngList: List<LatLng>) {
@@ -384,6 +516,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         }
         val bounds = builder.build()
         googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 2))
+
         val polylineOptions = PolylineOptions()
         polylineOptions.color(Color.GRAY)
         polylineOptions.width(5f)
@@ -444,34 +577,28 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     override fun informCabIsArriving() {
-        binding.statusTextView.text = getString(R.string.your_cab_is_arriving)
+        Toast.makeText(this, getString(R.string.your_cab_is_arriving), Toast.LENGTH_SHORT).show()
     }
 
     override fun informCabArrived() {
-        binding.statusTextView.text = getString(R.string.your_cab_has_arrived)
-        greyPolyLine?.remove()
-        blackPolyline?.remove()
-        originMarker?.remove()
-        destinationMarker?.remove()
+        Toast.makeText(this, getString(R.string.your_cab_has_arrived), Toast.LENGTH_SHORT).show()
     }
 
     override fun informTripStart() {
-        binding.statusTextView.text = getString(R.string.you_are_on_a_trip)
-        previousLatLngFromServer = null
+        Toast.makeText(this, getString(R.string.you_are_on_a_trip), Toast.LENGTH_SHORT).show()
     }
 
     override fun informTripEnd() {
-        binding.statusTextView.text = getString(R.string.trip_end)
-        binding.nextRideButton.visibility = View.VISIBLE
-        greyPolyLine?.remove()
-        blackPolyline?.remove()
-        originMarker?.remove()
-        destinationMarker?.remove()
+        Toast.makeText(this, getString(R.string.trip_end), Toast.LENGTH_SHORT).show()
+        reset()
     }
 
     override fun showRoutesNotAvailableError() {
-        val error = getString(R.string.route_not_available_choose_different_locations)
-        Toast.makeText(this, error, Toast.LENGTH_LONG).show()
+        Toast.makeText(
+            this,
+            getString(R.string.route_not_available_choose_different_locations),
+            Toast.LENGTH_LONG
+        ).show()
         reset()
     }
 
@@ -479,5 +606,4 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         Toast.makeText(this, error, Toast.LENGTH_LONG).show()
         reset()
     }
-
 }

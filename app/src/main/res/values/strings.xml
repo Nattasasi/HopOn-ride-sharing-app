@@ -19,4 +19,15 @@
     <string name="start_navigation">Start Navigation</string>
     <string name="navigation_not_available">Navigation is not available on this device</string>
     <string name="navigation_missing_waypoints">Missing origin or destination for navigation</string>
+    <string name="generic_error">Something went wrong</string>
+    <string name="create_ride">Create Ride</string>
+    <string name="selected_place">Selected place</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_rides">Rides</string>
+    <string name="nav_profile">Profile</string>
+    <string name="login_title">Welcome to HopOn</string>
+    <string name="email">Email</string>
+    <string name="password">Password</string>
+    <string name="login">Login</string>
+    <string name="login_required_fields">Please enter email and password</string>
 </resources>

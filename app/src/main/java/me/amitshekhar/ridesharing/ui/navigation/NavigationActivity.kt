@@ -11,6 +11,8 @@ import com.google.android.libraries.navigation.NavigationView
 import com.google.android.libraries.navigation.Navigator
 import com.google.android.libraries.navigation.Waypoint
 import com.tritech.hopon.R
+import com.tritech.hopon.ui.auth.LoginActivity
+import com.tritech.hopon.utils.SessionManager
 
 class NavigationActivity : AppCompatActivity() {
 
@@ -35,6 +37,13 @@ class NavigationActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (!SessionManager.isLoggedIn(this)) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
         setContentView(R.layout.activity_navigation)
         navigationView = findViewById(R.id.navigation_view)
         navigationView.onCreate(savedInstanceState)
