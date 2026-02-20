@@ -22,6 +22,15 @@
     <string name="generic_error">Something went wrong</string>
     <string name="create_ride">Create Ride</string>
     <string name="selected_place">Selected place</string>
+    <string name="rides_for_destination">Available rides</string>
+    <string name="rides_for_destination_named">Available rides to %1$s</string>
+    <string name="no_rides_for_destination">No rides available for this destination</string>
+    <string name="meetup_format">Meetup: %1$s</string>
+    <string name="destination_format">Destination: %1$s</string>
+    <string name="pickup_distance_format">Pickup distance: %1$s km</string>
+    <string name="ride_detail_title">Ride Detail</string>
+    <string name="meetup_location_label">Meetup location</string>
+    <string name="destination_label">Destination</string>
     <string name="nav_home">Home</string>
     <string name="nav_rides">Rides</string>
     <string name="nav_profile">Profile</string>
@@ -30,4 +39,6 @@
     <string name="password">Password</string>
     <string name="login">Login</string>
     <string name="login_required_fields">Please enter email and password</string>
+    <string name="close">Close</string>
+    <string name="no_places_found">No places found</string>
 </resources>

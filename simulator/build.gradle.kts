@@ -30,6 +30,21 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+
+    sourceSets {
+        getByName("main").java.srcDirs(
+            "src/main/java",
+            "src/main/ridesharing"
+        )
+        getByName("androidTest").java.srcDirs(
+            "src/androidTest/java",
+            "src/androidTest"
+        )
+        getByName("test").java.srcDirs(
+            "src/test/java",
+            "src/test"
+        )
+    }
 }
 
 dependencies {
