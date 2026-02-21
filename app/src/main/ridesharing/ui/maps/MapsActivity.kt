@@ -61,6 +61,7 @@ import com.google.android.libraries.places.api.model.Place
 import com.google.android.libraries.places.api.net.FetchPlaceRequest
 import com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest
 import com.google.android.libraries.places.api.net.PlacesClient
+import com.google.maps.internal.PolylineEncoding
 import com.tritech.hopon.BuildConfig
 import com.tritech.hopon.R
 import com.tritech.hopon.data.network.NetworkService
@@ -76,6 +77,9 @@ import com.tritech.hopon.ui.components.hopOnButton
 import com.tritech.hopon.ui.maps.mapsBottomNavigation
 import com.tritech.hopon.ui.maps.rideResultsBottomSheetPanel
 import com.tritech.hopon.utils.ViewUtils
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 import kotlin.math.max
 
@@ -128,6 +132,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var isRidePanelExpanded by mutableStateOf(false)
     private var selectedRide by mutableStateOf<RideListItem?>(null)
     private var rideRoutePolyline: Polyline? = null
+    private var pickupRoutePolyline: Polyline? = null
     private val meetupPinSizePx = 94
     private val meetupPinSelectedSizePx = 112
 
@@ -299,7 +304,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun selectRideForDetail(ride: RideListItem) {
         selectedRide = ride
         collapseRidePanel()  // Reset to peek state when showing detail
-        drawRideRoute(ride.meetupLatLng, ride.destinationLatLng)
+        requestRideRoute(ride.meetupLatLng, ride.destinationLatLng)
+        currentLatLng?.let { requestPickupRoute(it, ride.meetupLatLng) }
         
         // Find and highlight the corresponding marker
         clearSelectedMeetupMarker()
@@ -317,6 +323,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         selectedRide = null
         rideRoutePolyline?.remove()
         rideRoutePolyline = null
+        pickupRoutePolyline?.remove()
+        pickupRoutePolyline = null
         
         // Clear marker selection
         clearSelectedMeetupMarker()
@@ -325,16 +333,208 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.createRideButton.visibility = View.GONE
     }
 
-    private fun drawRideRoute(meetupLatLng: LatLng, destinationLatLng: LatLng) {
-        // Clear existing route polyline
+    private fun requestRideRoute(meetupLatLng: LatLng, destinationLatLng: LatLng) {
+        val routesApiKey = getString(R.string.routes_api_key)
+        if (routesApiKey.isBlank()) {
+            drawRideRouteFallback(meetupLatLng, destinationLatLng)
+            return
+        }
+
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val requestBody = JSONObject().apply {
+                    put("origin", buildRouteLocationJson(meetupLatLng))
+                    put("destination", buildRouteLocationJson(destinationLatLng))
+                    put("travelMode", "DRIVE")
+                    put("routingPreference", "TRAFFIC_AWARE")
+                }
+
+                val url = URL("https://routes.googleapis.com/directions/v2:computeRoutes")
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("X-Goog-Api-Key", routesApiKey)
+                    setRequestProperty("X-Goog-FieldMask", "routes.polyline.encodedPolyline")
+                }
+
+                connection.outputStream.use { outputStream ->
+                    outputStream.write(requestBody.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                val responseCode = connection.responseCode
+                val responseStream = if (responseCode in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream ?: connection.inputStream
+                }
+                val responseText = responseStream.bufferedReader().use { it.readText() }
+
+                if (responseCode !in 200..299) {
+                    runOnUiThread { drawRideRouteFallback(meetupLatLng, destinationLatLng) }
+                    return@Thread
+                }
+
+                val responseJson = JSONObject(responseText)
+                val routes = responseJson.optJSONArray("routes")
+                if (routes == null || routes.length() == 0) {
+                    runOnUiThread { drawRideRouteFallback(meetupLatLng, destinationLatLng) }
+                    return@Thread
+                }
+
+                val polyline = routes.getJSONObject(0)
+                    .getJSONObject("polyline")
+                    .getString("encodedPolyline")
+                val decoded = PolylineEncoding.decode(polyline)
+                val latLngList = decoded.map { LatLng(it.lat, it.lng) }
+
+                runOnUiThread {
+                    if (latLngList.size >= 2) {
+                        drawRideRoutePath(latLngList)
+                    } else {
+                        drawRideRouteFallback(meetupLatLng, destinationLatLng)
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread { drawRideRouteFallback(meetupLatLng, destinationLatLng) }
+            } finally {
+                connection?.disconnect()
+            }
+        }.start()
+    }
+
+    private fun drawRideRoutePath(latLngList: List<LatLng>) {
         rideRoutePolyline?.remove()
-        
-        // Draw route polyline from meetup to destination in primary color
+
+        val builder = LatLngBounds.Builder()
+        for (latLng in latLngList) {
+            builder.include(latLng)
+        }
+        val bounds = builder.build()
+        googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 100))
+
         val polylineOptions = PolylineOptions()
-        polylineOptions.color(ContextCompat.getColor(this, R.color.colorPrimary))
+        polylineOptions.color(ContextCompat.getColor(this, R.color.colorAccent))
+        polylineOptions.width(8f)
+        polylineOptions.addAll(latLngList)
+        rideRoutePolyline = googleMap.addPolyline(polylineOptions)
+    }
+
+    private fun drawRideRouteFallback(meetupLatLng: LatLng, destinationLatLng: LatLng) {
+        rideRoutePolyline?.remove()
+
+        val polylineOptions = PolylineOptions()
+        polylineOptions.color(ContextCompat.getColor(this, R.color.colorAccent))
         polylineOptions.width(8f)
         polylineOptions.add(meetupLatLng, destinationLatLng)
         rideRoutePolyline = googleMap.addPolyline(polylineOptions)
+    }
+
+    private fun requestPickupRoute(startLatLng: LatLng, meetupLatLng: LatLng) {
+        val routesApiKey = getString(R.string.routes_api_key)
+        if (routesApiKey.isBlank()) {
+            drawPickupRouteFallback(startLatLng, meetupLatLng)
+            return
+        }
+
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val requestBody = JSONObject().apply {
+                    put("origin", buildRouteLocationJson(startLatLng))
+                    put("destination", buildRouteLocationJson(meetupLatLng))
+                    put("travelMode", "DRIVE")
+                    put("routingPreference", "TRAFFIC_AWARE")
+                }
+
+                val url = URL("https://routes.googleapis.com/directions/v2:computeRoutes")
+                connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("X-Goog-Api-Key", routesApiKey)
+                    setRequestProperty("X-Goog-FieldMask", "routes.polyline.encodedPolyline")
+                }
+
+                connection.outputStream.use { outputStream ->
+                    outputStream.write(requestBody.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                val responseCode = connection.responseCode
+                val responseStream = if (responseCode in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream ?: connection.inputStream
+                }
+                val responseText = responseStream.bufferedReader().use { it.readText() }
+
+                if (responseCode !in 200..299) {
+                    runOnUiThread { drawPickupRouteFallback(startLatLng, meetupLatLng) }
+                    return@Thread
+                }
+
+                val responseJson = JSONObject(responseText)
+                val routes = responseJson.optJSONArray("routes")
+                if (routes == null || routes.length() == 0) {
+                    runOnUiThread { drawPickupRouteFallback(startLatLng, meetupLatLng) }
+                    return@Thread
+                }
+
+                val polyline = routes.getJSONObject(0)
+                    .getJSONObject("polyline")
+                    .getString("encodedPolyline")
+                val decoded = PolylineEncoding.decode(polyline)
+                val latLngList = decoded.map { LatLng(it.lat, it.lng) }
+
+                runOnUiThread {
+                    if (latLngList.size >= 2) {
+                        drawPickupRoutePath(latLngList)
+                    } else {
+                        drawPickupRouteFallback(startLatLng, meetupLatLng)
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread { drawPickupRouteFallback(startLatLng, meetupLatLng) }
+            } finally {
+                connection?.disconnect()
+            }
+        }.start()
+    }
+
+    private fun drawPickupRoutePath(latLngList: List<LatLng>) {
+        pickupRoutePolyline?.remove()
+
+        val polylineOptions = PolylineOptions()
+        polylineOptions.color(ContextCompat.getColor(this, R.color.colorPrimary))
+        polylineOptions.width(8f)
+        polylineOptions.addAll(latLngList)
+        pickupRoutePolyline = googleMap.addPolyline(polylineOptions)
+    }
+
+    private fun drawPickupRouteFallback(startLatLng: LatLng, meetupLatLng: LatLng) {
+        pickupRoutePolyline?.remove()
+
+        val polylineOptions = PolylineOptions()
+        polylineOptions.color(ContextCompat.getColor(this, R.color.colorPrimary))
+        polylineOptions.width(8f)
+        polylineOptions.add(startLatLng, meetupLatLng)
+        pickupRoutePolyline = googleMap.addPolyline(polylineOptions)
+    }
+
+    private fun buildRouteLocationJson(latLng: LatLng): JSONObject {
+        val latLngJson = JSONObject()
+        latLngJson.put("latitude", latLng.latitude)
+        latLngJson.put("longitude", latLng.longitude)
+        val locationJson = JSONObject()
+        locationJson.put("latLng", latLngJson)
+        val container = JSONObject()
+        container.put("location", locationJson)
+        return container
     }
 
     private fun showRideResultsPanel() {
@@ -683,7 +883,14 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun addOriginDestinationMarkerAndGet(latLng: LatLng): Marker? {
-        val bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(MapUtils.getDestinationBitmap())
+        val bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(
+            MapUtils.getLocationIconBitmap(
+                this,
+                R.drawable.ic_target,
+                R.color.colorAccent,
+                sizePx = 72
+            )
+        )
         return googleMap.addMarker(
             MarkerOptions().position(latLng).flat(true).icon(bitmapDescriptor)
         )
@@ -924,6 +1131,10 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun selectMeetupMarker(marker: Marker, ride: RideListItem) {
+        if (selectedRide != null) {
+            selectRideForDetail(ride)
+            return
+        }
         if (selectedMeetupMarker == marker) {
             return
         }

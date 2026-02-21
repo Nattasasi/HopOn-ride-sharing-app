@@ -23,13 +23,15 @@ object MapUtils {
     fun getDestinationBitmap(): Bitmap {
         val height = 20
         val width = 20
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = Paint()
-        paint.color = Color.BLACK
-        paint.style = Paint.Style.FILL
-        paint.isAntiAlias = true
-        canvas.drawRect(0F, 0F, width.toFloat(), height.toFloat(), paint)
+        val paint = Paint().apply {
+            color = Color.BLACK
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+        val radius = (minOf(width, height) / 2f)
+        canvas.drawCircle(width / 2f, height / 2f, radius, paint)
         return bitmap
     }
 

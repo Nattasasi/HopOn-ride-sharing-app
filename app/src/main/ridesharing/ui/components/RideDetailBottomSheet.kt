@@ -192,7 +192,7 @@ fun rideDetailBottomSheet(
                         Icon(
                             imageVector = Icons.Filled.Star,
                             contentDescription = null,
-                            tint = colorResource(id = R.color.colorPrimary),
+                            tint = colorResource(id = R.color.colorAccent),
                             modifier = Modifier.size(20.dp)
                         )
                     },
