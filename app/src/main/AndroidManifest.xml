@@ -46,6 +46,11 @@
             android:theme="@style/AppTheme" />
 
         <activity
+            android:name=".ui.rides.RideInProcessActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity
             android:name=".ui.navigation.NavigationActivity"
             android:exported="false"
             android:theme="@style/MapsTheme" />

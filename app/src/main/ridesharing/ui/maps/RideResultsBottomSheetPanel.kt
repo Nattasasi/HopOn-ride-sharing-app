@@ -41,11 +41,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.tritech.hopon.R
 import com.tritech.hopon.ui.components.rideResultCard
+import com.tritech.hopon.ui.components.rideDetailBottomSheet
 import kotlinx.coroutines.launch
 
 private val RideResultCardHeight = 130.dp
 private val HandleHeight = 5.dp
 private val HandlePadding = 16.dp  // approximate top+bottom
+private val DetailPeekHeight = 120.dp  // Height for meetup → destination row
 
 @Composable
 fun rideResultsBottomSheetPanel(
@@ -53,15 +55,29 @@ fun rideResultsBottomSheetPanel(
     expanded: Boolean,
     onExpandChange: (Boolean) -> Unit,
     rides: List<RideListItem>,
-    onRideClick: (RideListItem) -> Unit
+    selectedRide: RideListItem?,
+    onRideClick: (RideListItem) -> Unit,
+    onBackToList: () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
 
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
 
-    val peekHeight = RideResultCardHeight * 3/2 + HandleHeight + HandlePadding
-    val expandedHeight = screenHeight - 100.dp - 70.dp - 30.dp
+    val isDetailMode = selectedRide != null
+    
+    // Different heights for list mode vs detail mode
+    val peekHeight = if (isDetailMode) {
+        DetailPeekHeight + HandleHeight + HandlePadding
+    } else {
+        RideResultCardHeight * 3/2 + HandleHeight + HandlePadding
+    }
+    
+    val expandedHeight = if (isDetailMode) {
+        screenHeight / 2  // Half screen for detail mode
+    } else {
+        screenHeight - 100.dp - 70.dp - 30.dp  // Full expansion for list mode
+    }
 
     val dragDelta = remember { mutableStateOf(0f) }
     val listState = rememberLazyListState()
@@ -166,32 +182,51 @@ fun rideResultsBottomSheetPanel(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    Crossfade(targetState = rides, label = "ride-list-crossfade") { rideList ->
-                        if (rideList.isEmpty()) {
-                            Text(
-                                text = stringResource(id = R.string.no_rides_for_destination),
-                                color = Color.DarkGray,
-                                modifier = Modifier.padding(vertical = 20.dp)
-                            )
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxWidth(),
-                                state = listState,
-                                contentPadding = PaddingValues(bottom = 12.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                items(rideList) { ride ->
-                                    rideResultCard(
-                                        meetupLabel = ride.meetupLabel,
-                                        meetupDateTimeLabel = ride.meetupDateTimeLabel,
-                                        pickupDistanceMeters = ride.pickupDistanceMeters,
-                                        hostName = ride.hostName,
-                                        waitTimeMinutes = ride.waitTimeMinutes,
-                                        peopleCount = ride.peopleCount,
-                                        maxPeopleCount = ride.maxPeopleCount,
-                                        onClick = { onRideClick(ride) },
-                                        modifier = Modifier.height(RideResultCardHeight)
-                                    )
+                    if (selectedRide != null) {
+                        // Detail mode - show selected ride details
+                        rideDetailBottomSheet(
+                            meetupLabel = selectedRide.meetupLabel,
+                            destinationLabel = selectedRide.destinationLabel,
+                            meetupDateTimeLabel = selectedRide.meetupDateTimeLabel,
+                            pickupDistanceMeters = selectedRide.pickupDistanceMeters,
+                            waitTimeMinutes = selectedRide.waitTimeMinutes,
+                            hostName = selectedRide.hostName,
+                            hostRating = selectedRide.hostRating,
+                            hostVehicleType = selectedRide.hostVehicleType,
+                            peopleCount = selectedRide.peopleCount,
+                            maxPeopleCount = selectedRide.maxPeopleCount,
+                            onBackClick = onBackToList,
+                            isExpanded = expanded
+                        )
+                    } else {
+                        // List mode - show all rides
+                        Crossfade(targetState = rides, label = "ride-list-crossfade") { rideList ->
+                            if (rideList.isEmpty()) {
+                                Text(
+                                    text = stringResource(id = R.string.no_rides_for_destination),
+                                    color = Color.DarkGray,
+                                    modifier = Modifier.padding(vertical = 20.dp)
+                                )
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    state = listState,
+                                    contentPadding = PaddingValues(bottom = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    items(rideList) { ride ->
+                                        rideResultCard(
+                                            meetupLabel = ride.meetupLabel,
+                                            meetupDateTimeLabel = ride.meetupDateTimeLabel,
+                                            pickupDistanceMeters = ride.pickupDistanceMeters,
+                                            hostName = ride.hostName,
+                                            waitTimeMinutes = ride.waitTimeMinutes,
+                                            peopleCount = ride.peopleCount,
+                                            maxPeopleCount = ride.maxPeopleCount,
+                                            onClick = { onRideClick(ride) },
+                                            modifier = Modifier.height(RideResultCardHeight)
+                                        )
+                                    }
                                 }
                             }
                         }

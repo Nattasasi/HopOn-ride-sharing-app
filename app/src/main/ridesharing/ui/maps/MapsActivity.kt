@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.transition.AutoTransition
@@ -66,6 +67,7 @@ import com.tritech.hopon.data.network.NetworkService
 import com.tritech.hopon.databinding.ActivityMapsBinding
 import com.tritech.hopon.ui.auth.LoginActivity
 import com.tritech.hopon.ui.rides.RideDetailActivity
+import com.tritech.hopon.ui.rides.RideInProcessActivity
 import com.tritech.hopon.utils.AnimationUtils
 import com.tritech.hopon.utils.MapUtils
 import com.tritech.hopon.utils.PermissionUtils
@@ -124,6 +126,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var ridePanelItems by mutableStateOf<List<RideListItem>>(emptyList())
     private var allRidePanelItems by mutableStateOf<List<RideListItem>>(emptyList())
     private var isRidePanelExpanded by mutableStateOf(false)
+    private var selectedRide by mutableStateOf<RideListItem?>(null)
+    private var rideRoutePolyline: Polyline? = null
     private val meetupPinSizePx = 94
     private val meetupPinSelectedSizePx = 112
 
@@ -215,8 +219,12 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     if (expanded) expandRidePanel() else collapseRidePanel()
                 },
                 rides = ridePanelItems,
+                selectedRide = selectedRide,
                 onRideClick = { ride ->
-                    openRideDetail(ride)
+                    selectRideForDetail(ride)
+                },
+                onBackToList = {
+                    clearRideDetailSelection()
                 }
             )
         }
@@ -288,6 +296,47 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             )
     }
 
+    private fun selectRideForDetail(ride: RideListItem) {
+        selectedRide = ride
+        collapseRidePanel()  // Reset to peek state when showing detail
+        drawRideRoute(ride.meetupLatLng, ride.destinationLatLng)
+        
+        // Find and highlight the corresponding marker
+        clearSelectedMeetupMarker()
+        val marker = meetupLocationMarkers.find { it.tag == ride }
+        marker?.let {
+            selectedMeetupMarker = it
+            animateMeetupMarkerIcon(it, meetupPinSizePx, meetupPinSelectedSizePx, R.color.colorPrimary)
+        }
+        
+        // Show "Join Ride" button
+        binding.createRideButton.visibility = View.VISIBLE
+    }
+
+    private fun clearRideDetailSelection() {
+        selectedRide = null
+        rideRoutePolyline?.remove()
+        rideRoutePolyline = null
+        
+        // Clear marker selection
+        clearSelectedMeetupMarker()
+        
+        // Hide "Join Ride" button
+        binding.createRideButton.visibility = View.GONE
+    }
+
+    private fun drawRideRoute(meetupLatLng: LatLng, destinationLatLng: LatLng) {
+        // Clear existing route polyline
+        rideRoutePolyline?.remove()
+        
+        // Draw route polyline from meetup to destination in primary color
+        val polylineOptions = PolylineOptions()
+        polylineOptions.color(ContextCompat.getColor(this, R.color.colorPrimary))
+        polylineOptions.width(8f)
+        polylineOptions.add(meetupLatLng, destinationLatLng)
+        rideRoutePolyline = googleMap.addPolyline(polylineOptions)
+    }
+
     private fun showRideResultsPanel() {
         binding.ridesBottomSheetCard.visibility = View.VISIBLE
         binding.mapTouchOverlay.visibility = View.GONE  // Keep invisible - map's own click listener handles tap to dismiss
@@ -300,6 +349,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridesBottomSheetCard.visibility = View.GONE
         binding.mapTouchOverlay.visibility = View.GONE
         clearMeetupLocationMarkers()
+        clearRideDetailSelection()
         if (clearData) {
             ridePanelItems = emptyList()
         }
@@ -410,15 +460,16 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         binding.createRideButton.setContent {
+            val isJoinRideMode = selectedRide != null
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(end = 15.dp, bottom = 5.dp),
-                contentAlignment = Alignment.BottomEnd
+                    .padding(start = 15.dp, end = 15.dp, bottom = 5.dp),
+                contentAlignment = if (isJoinRideMode) Alignment.BottomCenter else Alignment.BottomEnd
             ) {
                 hopOnButton(
-                    text = "Create ride",
-                    onClick = ::handleCreateRideClick
+                    text = if (isJoinRideMode) "Join Ride" else "Create ride",
+                    onClick = if (isJoinRideMode) ::handleJoinRideClick else ::handleCreateRideClick
                 )
             }
         }
@@ -447,6 +498,12 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun handleCreateRideClick() {
         Toast.makeText(this, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun handleJoinRideClick() {
+        selectedRide?.let {
+            startActivity(RideInProcessActivity.createIntent(this))
+        }
     }
 
     private fun logoutAndNavigateToLogin() {
