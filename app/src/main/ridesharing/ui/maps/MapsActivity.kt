@@ -17,6 +17,16 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.app.ActivityCompat
@@ -35,7 +45,9 @@ import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
@@ -59,6 +71,9 @@ import com.tritech.hopon.utils.AnimationUtils
 import com.tritech.hopon.utils.MapUtils
 import com.tritech.hopon.utils.PermissionUtils
 import com.tritech.hopon.utils.SessionManager
+import com.tritech.hopon.ui.components.hopOnButton
+import com.tritech.hopon.ui.maps.mapsBottomNavigation
+import com.tritech.hopon.ui.maps.rideResultsBottomSheetPanel
 import com.tritech.hopon.utils.ViewUtils
 import java.util.Locale
 import kotlin.math.max
@@ -102,14 +117,18 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var previousLatLngFromServer: LatLng? = null
     private var currentLatLngFromServer: LatLng? = null
     private var movingCabMarker: Marker? = null
+    private var meetupLocationMarkers: MutableList<Marker> = mutableListOf()
+    private var meetupMarkerIcon: BitmapDescriptor? = null
     private var isSearchBarAtTop = false
-    private lateinit var rideListAdapter: RideListAdapter
     private lateinit var predictionAdapter: PlacePredictionAdapter
     private val searchDebounceHandler = Handler(Looper.getMainLooper())
     private var pendingSearchRunnable: Runnable? = null
     private var latestRequestToken = 0L
     private var latestPredictions: List<AutocompletePrediction> = emptyList()
     private var suppressSearchWatcher = false
+    private var isRidePanelVisible by mutableStateOf(false)
+    private var ridePanelItems by mutableStateOf<List<RideListItem>>(emptyList())
+    private var isRidePanelExpanded by mutableStateOf(false)
 
     // Demo destinations used when mock mode is enabled.
     private val placeholderPlaces = listOf(
@@ -148,7 +167,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         setContentView(binding.root)
         ViewUtils.enableTransparentStatusBar(window)
         setUpImeSpacing()
-        setUpRideList()
+        setUpRideResultsPanelCompose()
         setUpBackPressHandler()
 
         // Live mode initializes Places API client + websocket presenter.
@@ -186,7 +205,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun restoreDefaultMapUiIfNeeded(): Boolean {
-        if (binding.ridesBottomSheetCard.visibility != View.VISIBLE &&
+        if (!isRidePanelVisible &&
             !isSearchBarAtTop &&
             binding.predictionsCard.visibility != View.VISIBLE
         ) {
@@ -203,18 +222,33 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         val imm = getSystemService(InputMethodManager::class.java)
         imm?.hideSoftInputFromWindow(binding.searchBarTextView.windowToken, 0)
 
-        binding.ridesBottomSheetCard.visibility = View.GONE
+        hideRideResultsPanel(clearData = true)
         binding.createRideButton.visibility = View.GONE
-        binding.ridesForDestinationTextView.text = getString(R.string.rides_for_destination)
-        binding.ridesEmptyTextView.visibility = View.GONE
-        rideListAdapter.submitList(emptyList())
         binding.searchBarTextView.setText("")
         moveSearchBarToBottom()
         return true
     }
 
-    private fun setUpRideList() {
-        rideListAdapter = RideListAdapter { ride ->
+    private fun setUpRideResultsPanelCompose() {
+        binding.ridesBottomSheetCard.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.ridesBottomSheetCard.setContent {
+            rideResultsBottomSheetPanel(
+                visible = isRidePanelVisible,
+                expanded = isRidePanelExpanded,
+                onExpandChange = { expanded ->
+                    if (expanded) expandRidePanel() else collapseRidePanel()
+                },
+                rides = ridePanelItems,
+                onRideClick = { ride ->
+                    openRideDetail(ride)
+                }
+            )
+        }
+    }
+
+    private fun openRideDetail(ride: RideListItem) {
             val distanceKm = String.format(Locale.US, "%.2f", ride.pickupDistanceMeters / 1000f)
             startActivity(
                 RideDetailActivity.createIntent(
@@ -224,9 +258,60 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     distanceKm
                 )
             )
+    }
+
+    private fun showRideResultsPanel() {
+        binding.ridesBottomSheetCard.visibility = View.VISIBLE
+        binding.mapTouchOverlay.visibility = View.GONE  // Keep invisible - map's own click listener handles tap to dismiss
+        isRidePanelVisible = true
+    }
+
+    private fun hideRideResultsPanel(clearData: Boolean) {
+        isRidePanelVisible = false
+        isRidePanelExpanded = false
+        binding.ridesBottomSheetCard.visibility = View.GONE
+        binding.mapTouchOverlay.visibility = View.GONE
+        clearMeetupLocationMarkers()
+        if (clearData) {
+            ridePanelItems = emptyList()
         }
-        binding.ridesRecyclerView.layoutManager = LinearLayoutManager(this)
-        binding.ridesRecyclerView.adapter = rideListAdapter
+    }
+
+    private fun expandRidePanel() {
+        if (!isRidePanelVisible) showRideResultsPanel()
+        isRidePanelExpanded = true
+    }
+
+    private fun collapseRidePanel() {
+        isRidePanelExpanded = false
+    }
+
+    private fun addMeetupLocationMarkers(rides: List<RideListItem>) {
+        clearMeetupLocationMarkers()
+        if (meetupMarkerIcon == null) {
+            meetupMarkerIcon = BitmapDescriptorFactory.fromBitmap(
+                MapUtils.getLocationIconBitmap(this, R.drawable.location_on_24, R.color.colorPrimaryDark)
+            )
+        }
+        for (ride in rides) {
+            val marker = googleMap.addMarker(
+                MarkerOptions()
+                    .position(ride.meetupLatLng)
+                    .icon(meetupMarkerIcon)
+                    .flat(false)
+                    .title(ride.meetupLabel)
+            )
+            if (marker != null) {
+                meetupLocationMarkers.add(marker)
+            }
+        }
+    }
+
+    private fun clearMeetupLocationMarkers() {
+        for (marker in meetupLocationMarkers) {
+            marker.remove()
+        }
+        meetupLocationMarkers.clear()
     }
 
     private fun setUpImeSpacing() {
@@ -265,10 +350,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 }
 
                 // Hide ride results while typing a new query.
-                binding.ridesBottomSheetCard.visibility = View.GONE
+                hideRideResultsPanel(clearData = true)
                 binding.createRideButton.visibility = View.GONE
-                rideListAdapter.submitList(emptyList())
-                binding.ridesEmptyTextView.visibility = View.GONE
 
                 pendingSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
                 val query = s?.toString().orEmpty()
@@ -286,6 +369,19 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 if (query.length >= 2) {
                     fetchAutocompletePredictions(query)
                 }
+            }
+        }
+
+        // Handle Enter key to auto-select first autocomplete suggestion
+        binding.searchBarTextView.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                // Select the first prediction if available
+                if (latestPredictions.isNotEmpty()) {
+                    fetchPlaceDetailsAndApplySelection(latestPredictions[0])
+                }
+                true
+            } else {
+                false
             }
         }
     }
@@ -306,25 +402,58 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 activateInlineSearchMode()
             }
         }
-        binding.createRideButton.setOnClickListener {
-            Toast.makeText(this, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
+
+        // Map touch overlay - tapping empty map area restores default UI
+        binding.mapTouchOverlay.setOnClickListener {
+            restoreDefaultMapUiIfNeeded()
         }
 
-        // Bottom nav currently supports home, rides (toast), and logout.
-        binding.bottomNav.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_home -> true
-                R.id.nav_rides -> {
-                    Toast.makeText(this, getString(R.string.nav_rides), Toast.LENGTH_SHORT).show()
-                    true
-                }
-                R.id.nav_profile -> {
-                    logoutAndNavigateToLogin()
-                    true
-                }
-                else -> false
+        setUpBottomNavCompose()
+        setUpCreateRideButtonCompose()
+    }
+
+    private fun setUpCreateRideButtonCompose() {
+        binding.createRideButton.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.createRideButton.setContent {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 15.dp, bottom = 5.dp),
+                contentAlignment = Alignment.BottomEnd
+            ) {
+                hopOnButton(
+                    text = "Create ride",
+                    onClick = ::handleCreateRideClick
+                )
             }
         }
+    }
+
+    private fun setUpBottomNavCompose() {
+        binding.bottomNav.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.bottomNav.setContent {
+            mapsBottomNavigation(onItemSelected = ::handleBottomNavSelection)
+        }
+    }
+
+    private fun handleBottomNavSelection(item: MapsBottomNavItem) {
+        when (mapBottomNavItemToAction(item)) {
+            MapsBottomNavAction.NoOp -> Unit
+            MapsBottomNavAction.ShowRides -> {
+                Toast.makeText(this, getString(R.string.nav_rides), Toast.LENGTH_SHORT).show()
+            }
+            MapsBottomNavAction.Logout -> {
+                logoutAndNavigateToLogin()
+            }
+        }
+    }
+
+    private fun handleCreateRideClick() {
+        Toast.makeText(this, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
     }
 
     private fun logoutAndNavigateToLogin() {
@@ -338,10 +467,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun activateInlineSearchMode() {
         // Hide ride results while searching.
-        binding.ridesBottomSheetCard.visibility = View.GONE
+        hideRideResultsPanel(clearData = true)
         binding.createRideButton.visibility = View.GONE
-        rideListAdapter.submitList(emptyList())
-        binding.ridesEmptyTextView.visibility = View.GONE
 
         moveSearchBarToTop()
         binding.searchBarTextView.requestFocus()
@@ -407,6 +534,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 }
                 applySelectedPlace(prediction.getFullText(null).toString(), latLng)
                 binding.predictionsCard.visibility = View.GONE
+                binding.searchBarTextView.clearFocus()
                 val imm = getSystemService(InputMethodManager::class.java)
                 imm?.hideSoftInputFromWindow(binding.searchBarTextView.windowToken, 0)
             }
@@ -429,9 +557,9 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.searchBarTextView.setText(name)
         suppressSearchWatcher = false
         moveSearchBarToTop()
-        binding.ridesBottomSheetCard.visibility = View.VISIBLE
+        showRideResultsPanel()
         binding.createRideButton.visibility = View.VISIBLE
-        showFilteredRides(name, latLng)
+        val rideItems = showFilteredRides(name, latLng)
 
         if (!isMapReady) {
             Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
@@ -441,13 +569,11 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         destinationMarker?.remove()
         destinationMarker = addOriginDestinationMarkerAndGet(latLng)
         destinationMarker?.setAnchor(0.5f, 0.5f)
-        animateCamera(latLng)
+        val nearestMeetupLatLng = rideItems.firstOrNull()?.meetupLatLng ?: latLng
+        animateCamera(nearestMeetupLatLng)
     }
 
-    private fun showFilteredRides(destinationName: String, destinationLatLng: LatLng) {
-        binding.ridesForDestinationTextView.text =
-            getString(R.string.rides_for_destination_named, destinationName)
-
+    private fun showFilteredRides(destinationName: String, destinationLatLng: LatLng): List<RideListItem> {
         val normalizedDestination = destinationName.trim().lowercase(Locale.ROOT)
         val rideItems = mockRides
             .filter { ride ->
@@ -468,8 +594,9 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             }
             .sortedBy { it.pickupDistanceMeters }
 
-        rideListAdapter.submitList(rideItems)
-        binding.ridesEmptyTextView.visibility = if (rideItems.isEmpty()) View.VISIBLE else View.GONE
+        ridePanelItems = rideItems
+        addMeetupLocationMarkers(rideItems)
+        return rideItems
     }
 
     private class PlacePredictionAdapter(
@@ -609,10 +736,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun reset() {
         // Restore map and UI to pre-booking default state.
         binding.createRideButton.visibility = View.GONE
-        binding.ridesBottomSheetCard.visibility = View.GONE
-        binding.ridesForDestinationTextView.text = getString(R.string.rides_for_destination)
-        binding.ridesEmptyTextView.visibility = View.GONE
-        rideListAdapter.submitList(emptyList())
+        hideRideResultsPanel(clearData = true)
         binding.searchBarTextView.setText("")
         moveSearchBarToBottom()
 
@@ -756,9 +880,20 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         this.googleMap = googleMap
         isMapReady = true
 
-        // Tapping empty map area dismisses ride result panel.
+        val mapStyleApplied = this.googleMap.setMapStyle(
+            MapStyleOptions.loadRawResourceStyle(this, R.raw.map_style_minimal)
+        )
+        if (!mapStyleApplied) {
+            Log.e(TAG, "Failed to apply minimal map style")
+        }
+
+        // Tapping empty map area collapses ride result panel if visible, otherwise restores default UI.
         this.googleMap.setOnMapClickListener {
-            restoreDefaultMapUiIfNeeded()
+            if (isRidePanelVisible) {
+                collapseRidePanel()
+            } else {
+                restoreDefaultMapUiIfNeeded()
+            }
         }
         this.googleMap.setOnMarkerClickListener {
             false

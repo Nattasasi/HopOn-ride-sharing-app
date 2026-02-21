@@ -47,14 +47,11 @@
             android:inputType="textPassword"
             android:padding="14dp" />
 
-        <com.google.android.material.button.MaterialButton
+        <androidx.compose.ui.platform.ComposeView
             android:id="@+id/loginButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="@string/login"
-            android:textColor="@android:color/white"
-            app:backgroundTint="@color/colorAccent" />
+            android:layout_marginTop="20dp" />
 
     </LinearLayout>
 

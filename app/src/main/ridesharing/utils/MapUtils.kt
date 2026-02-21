@@ -3,6 +3,7 @@ package com.tritech.hopon.utils
 import android.content.Context
 import android.graphics.*
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.google.android.gms.maps.model.LatLng
 import com.tritech.hopon.R
 import kotlin.math.abs
@@ -28,6 +29,25 @@ object MapUtils {
         paint.style = Paint.Style.FILL
         paint.isAntiAlias = true
         canvas.drawRect(0F, 0F, width.toFloat(), height.toFloat(), paint)
+        return bitmap
+    }
+
+    fun getLocationIconBitmap(context: Context, drawableResId: Int, colorResId: Int): Bitmap {
+        val color = ContextCompat.getColor(context, colorResId)
+
+        val width = 60
+        val height = 60
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        val drawable = ContextCompat.getDrawable(context, drawableResId)
+            ?: return getDestinationBitmap()
+
+        // Colorize the vector directly so the pin shape stays intact.
+        drawable.mutate().colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
+        drawable.setBounds(5, 5, width - 5, height - 5)
+        drawable.draw(canvas)
+
         return bitmap
     }
 
