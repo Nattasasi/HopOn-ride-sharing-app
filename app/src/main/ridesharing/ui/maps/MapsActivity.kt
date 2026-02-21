@@ -85,25 +85,6 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         private const val PLACE_REQUEST_CODE = 2001
     }
 
-    private data class PlaceholderPlace(val name: String, val latLng: LatLng)
-
-    private data class MockUser(
-        val name: String,
-        val rating: Float,
-        val vehicleType: String
-    )
-
-    private data class MockRide(
-        val meetupLabel: String,
-        val meetupLatLng: LatLng,
-        val destinationLabel: String,
-        val destinationLatLng: LatLng,
-        val meetupDateTimeLabel: String,
-        val waitTimeMinutes: Int,
-        val host: MockUser,
-        val peopleCount: Int
-    )
-
     private lateinit var binding: ActivityMapsBinding
     private lateinit var googleMap: GoogleMap
     private var isMapReady = false
@@ -146,37 +127,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private val meetupPinSizePx = 94
     private val meetupPinSelectedSizePx = 112
 
-    // Demo destinations used when mock mode is enabled.
-    private val placeholderPlaces = listOf(
-        PlaceholderPlace("Siam Paragon", LatLng(13.7466, 100.5347)),
-        PlaceholderPlace("CentralWorld", LatLng(13.7460, 100.5395)),
-        PlaceholderPlace("Terminal 21", LatLng(13.7373, 100.5607))
-    )
     private var placeholderPlaceIndex = 0
-
-    private val mockUsers = listOf(
-        MockUser("Narin P.", 4.9f, "Toyota Yaris"),
-        MockUser("Mali S.", 4.8f, "Honda City"),
-        MockUser("Krit T.", 4.7f, "Mazda 2"),
-        MockUser("Pimchanok R.", 4.9f, "Tesla Model 3"),
-        MockUser("Thanawat K.", 4.6f, "Nissan Almera"),
-        MockUser("Suda C.", 4.8f, "Mitsubishi Attrage")
-    )
-
-    private val mockRides = listOf(
-        MockRide("Asok BTS", LatLng(13.7370, 100.5603), "Siam Paragon", LatLng(13.7466, 100.5347), "Today, 18:15", 5, mockUsers[0], 3),
-        MockRide("Phrom Phong", LatLng(13.7306, 100.5696), "Siam Paragon", LatLng(13.7466, 100.5347), "Today, 18:30", 8, mockUsers[1], 2),
-        MockRide("Chit Lom", LatLng(13.7449, 100.5431), "Siam Paragon", LatLng(13.7466, 100.5347), "Today, 18:45", 3, mockUsers[2], 4),
-        MockRide("Nana", LatLng(13.7405, 100.5550), "CentralWorld", LatLng(13.7460, 100.5395), "Today, 19:00", 6, mockUsers[3], 3),
-        MockRide("Ratchathewi", LatLng(13.7514, 100.5310), "CentralWorld", LatLng(13.7460, 100.5395), "Today, 19:10", 4, mockUsers[4], 2),
-        MockRide("Victory Monument", LatLng(13.7628, 100.5372), "CentralWorld", LatLng(13.7460, 100.5395), "Today, 19:20", 7, mockUsers[5], 4),
-        MockRide("Sukhumvit Soi 11", LatLng(13.7429, 100.5559), "Terminal 21", LatLng(13.7373, 100.5607), "Today, 20:00", 2, mockUsers[0], 1),
-        MockRide("Benjasiri Park", LatLng(13.7308, 100.5680), "Terminal 21", LatLng(13.7373, 100.5607), "Today, 20:15", 6, mockUsers[1], 3),
-        MockRide("Ekkamai", LatLng(13.7197, 100.5850), "Terminal 21", LatLng(13.7373, 100.5607), "Today, 20:30", 9, mockUsers[2], 4),
-        MockRide("Silom Complex", LatLng(13.7296, 100.5349), "Siam Paragon", LatLng(13.7466, 100.5347), "Tomorrow, 07:45", 12, mockUsers[3], 2),
-        MockRide("Samyan Mitrtown", LatLng(13.7327, 100.5291), "CentralWorld", LatLng(13.7460, 100.5395), "Tomorrow, 08:00", 10, mockUsers[4], 3),
-        MockRide("Thong Lo", LatLng(13.7241, 100.5783), "Terminal 21", LatLng(13.7373, 100.5607), "Tomorrow, 08:30", 11, mockUsers[5], 2)
-    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -579,7 +530,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun applyPlaceholderPlaceSelection() {
-        val place = placeholderPlaces[placeholderPlaceIndex % placeholderPlaces.size]
+        val place = MockData.placeholderPlaces[placeholderPlaceIndex % MockData.placeholderPlaces.size]
         placeholderPlaceIndex++
 
         applySelectedPlace(place.name, place.latLng)
@@ -609,7 +560,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun showFilteredRides(destinationName: String, destinationLatLng: LatLng): List<RideListItem> {
         val normalizedDestination = destinationName.trim().lowercase(Locale.ROOT)
-        val rideItems = mockRides
+        val rideItems = MockData.mockRides
             .filter { ride ->
                 val rideDestination = ride.destinationLabel.lowercase(Locale.ROOT)
                 rideDestination == normalizedDestination ||
@@ -629,7 +580,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     hostName = ride.host.name,
                     hostRating = ride.host.rating,
                     hostVehicleType = ride.host.vehicleType,
-                    peopleCount = ride.peopleCount
+                    peopleCount = ride.peopleCount,
+                    maxPeopleCount = ride.maxPeopleCount
                 )
             }
             .sortedBy { it.pickupDistanceMeters }

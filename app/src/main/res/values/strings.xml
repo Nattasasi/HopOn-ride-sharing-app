@@ -26,12 +26,13 @@
     <string name="rides_for_destination_named">Available rides to %1$s</string>
     <string name="no_rides_for_destination">No rides available for this destination</string>
     <string name="meetup_format">Meetup: %1$s</string>
-    <string name="destination_format">Destination: %1$s</string>
     <string name="pickup_distance_format">Pickup distance: %1$s km</string>
     <string name="meetup_datetime_format">Meetup date &amp; time: %1$s</string>
     <string name="wait_time_format">Wait time: %1$d min</string>
+    <string name="host_name_format">Host: %1$s</string>
     <string name="host_detail_format">Host: %1$s • %2$s ★ • %3$s</string>
     <string name="people_count_format">People on this ride: %1$d</string>
+    <string name="people_ratio_format">%1$d/%2$d</string>
     <string name="ride_detail_title">Ride Detail</string>
     <string name="meetup_location_label">Meetup location</string>
     <string name="destination_label">Destination</string>

@@ -13,5 +13,6 @@ data class RideListItem(
     val hostName: String,
     val hostRating: Float,
     val hostVehicleType: String,
-    val peopleCount: Int
+    val peopleCount: Int,
+    val maxPeopleCount: Int
 )

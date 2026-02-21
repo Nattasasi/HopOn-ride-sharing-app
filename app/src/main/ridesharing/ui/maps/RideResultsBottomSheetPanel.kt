@@ -41,10 +41,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.tritech.hopon.R
 import com.tritech.hopon.ui.components.rideResultCard
-import java.util.Locale
 import kotlinx.coroutines.launch
 
-private val RideResultCardHeight = 152.dp
+private val RideResultCardHeight = 130.dp
 private val HandleHeight = 5.dp
 private val HandlePadding = 16.dp  // approximate top+bottom
 
@@ -61,7 +60,7 @@ fun rideResultsBottomSheetPanel(
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
 
-    val peekHeight = RideResultCardHeight * 2 + HandleHeight + HandlePadding
+    val peekHeight = RideResultCardHeight * 3/2 + HandleHeight + HandlePadding
     val expandedHeight = screenHeight - 100.dp - 70.dp - 30.dp
 
     val dragDelta = remember { mutableStateOf(0f) }
@@ -182,16 +181,14 @@ fun rideResultsBottomSheetPanel(
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 items(rideList) { ride ->
-                                    val distanceKm = String.format(Locale.US, "%.2f", ride.pickupDistanceMeters / 1000f)
                                     rideResultCard(
                                         meetupLabel = ride.meetupLabel,
-                                        destinationLabel = ride.destinationLabel,
-                                        pickupDistanceKm = distanceKm,
+                                        meetupDateTimeLabel = ride.meetupDateTimeLabel,
+                                        pickupDistanceMeters = ride.pickupDistanceMeters,
                                         hostName = ride.hostName,
-                                        hostRating = ride.hostRating,
-                                        hostVehicleType = ride.hostVehicleType,
                                         waitTimeMinutes = ride.waitTimeMinutes,
                                         peopleCount = ride.peopleCount,
+                                        maxPeopleCount = ride.maxPeopleCount,
                                         onClick = { onRideClick(ride) },
                                         modifier = Modifier.height(RideResultCardHeight)
                                     )
