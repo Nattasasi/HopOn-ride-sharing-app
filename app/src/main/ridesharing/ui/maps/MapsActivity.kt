@@ -2,6 +2,7 @@ package com.tritech.hopon.ui.maps
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -14,6 +15,7 @@ import android.text.TextWatcher
 import android.util.Log
 import android.view.View
 import android.view.inputmethod.InputMethodManager
+import android.view.animation.DecelerateInterpolator
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.OnBackPressedCallback
@@ -119,6 +121,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var movingCabMarker: Marker? = null
     private var meetupLocationMarkers: MutableList<Marker> = mutableListOf()
     private var meetupMarkerIcon: BitmapDescriptor? = null
+    private var meetupMarkerIconSelected: BitmapDescriptor? = null
+    private var selectedMeetupMarker: Marker? = null
     private var isSearchBarAtTop = false
     private lateinit var predictionAdapter: PlacePredictionAdapter
     private val searchDebounceHandler = Handler(Looper.getMainLooper())
@@ -128,7 +132,10 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var suppressSearchWatcher = false
     private var isRidePanelVisible by mutableStateOf(false)
     private var ridePanelItems by mutableStateOf<List<RideListItem>>(emptyList())
+    private var allRidePanelItems by mutableStateOf<List<RideListItem>>(emptyList())
     private var isRidePanelExpanded by mutableStateOf(false)
+    private val meetupPinSizePx = 94
+    private val meetupPinSelectedSizePx = 112
 
     // Demo destinations used when mock mode is enabled.
     private val placeholderPlaces = listOf(
@@ -290,7 +297,22 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         clearMeetupLocationMarkers()
         if (meetupMarkerIcon == null) {
             meetupMarkerIcon = BitmapDescriptorFactory.fromBitmap(
-                MapUtils.getLocationIconBitmap(this, R.drawable.location_on_24, R.color.colorPrimaryDark)
+                MapUtils.getLocationIconBitmap(
+                    this,
+                    R.drawable.location_on_24,
+                    R.color.colorPrimaryDark,
+                    sizePx = meetupPinSizePx
+                )
+            )
+        }
+        if (meetupMarkerIconSelected == null) {
+            meetupMarkerIconSelected = BitmapDescriptorFactory.fromBitmap(
+                MapUtils.getLocationIconBitmap(
+                    this,
+                    R.drawable.location_on_24,
+                    R.color.colorPrimary,
+                    sizePx = meetupPinSelectedSizePx
+                )
             )
         }
         for (ride in rides) {
@@ -302,6 +324,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     .title(ride.meetupLabel)
             )
             if (marker != null) {
+                marker.tag = ride
                 meetupLocationMarkers.add(marker)
             }
         }
@@ -312,6 +335,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             marker.remove()
         }
         meetupLocationMarkers.clear()
+        selectedMeetupMarker = null
     }
 
     private fun setUpImeSpacing() {
@@ -344,6 +368,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 if (suppressSearchWatcher || BuildConfig.USE_MOCK_DATA) {
                     return
                 }
+
+                clearSelectedMeetupMarker()
 
                 if (!isSearchBarAtTop) {
                     moveSearchBarToTop()
@@ -466,6 +492,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun activateInlineSearchMode() {
+        clearSelectedMeetupMarker()
         // Hide ride results while searching.
         hideRideResultsPanel(clearData = true)
         binding.createRideButton.visibility = View.GONE
@@ -595,6 +622,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             .sortedBy { it.pickupDistanceMeters }
 
         ridePanelItems = rideItems
+        allRidePanelItems = rideItems
         addMeetupLocationMarkers(rideItems)
         return rideItems
     }
@@ -889,15 +917,67 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
         // Tapping empty map area collapses ride result panel if visible, otherwise restores default UI.
         this.googleMap.setOnMapClickListener {
+            clearSelectedMeetupMarker()
             if (isRidePanelVisible) {
                 collapseRidePanel()
             } else {
                 restoreDefaultMapUiIfNeeded()
             }
         }
-        this.googleMap.setOnMarkerClickListener {
-            false
+        this.googleMap.setOnMarkerClickListener { marker ->
+            val ride = marker.tag as? RideListItem ?: return@setOnMarkerClickListener false
+            selectMeetupMarker(marker, ride)
+            true
         }
+    }
+
+    private fun selectMeetupMarker(marker: Marker, ride: RideListItem) {
+        if (selectedMeetupMarker == marker) {
+            return
+        }
+        selectedMeetupMarker?.let { previous ->
+            animateMeetupMarkerIcon(previous, meetupPinSelectedSizePx, meetupPinSizePx, R.color.colorPrimaryDark)
+        }
+        selectedMeetupMarker = marker
+        animateMeetupMarkerIcon(marker, meetupPinSizePx, meetupPinSelectedSizePx, R.color.colorPrimary)
+        ridePanelItems = listOf(ride)
+        showRideResultsPanel()
+    }
+
+    private fun clearSelectedMeetupMarker() {
+        selectedMeetupMarker?.let { marker ->
+            animateMeetupMarkerIcon(marker, meetupPinSelectedSizePx, meetupPinSizePx, R.color.colorPrimaryDark)
+        }
+        selectedMeetupMarker = null
+        if (allRidePanelItems.isNotEmpty()) {
+            ridePanelItems = allRidePanelItems
+        }
+    }
+
+    private fun animateMeetupMarkerIcon(
+        marker: Marker,
+        fromSizePx: Int,
+        toSizePx: Int,
+        colorResId: Int
+    ) {
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 180L
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { valueAnimator ->
+                val fraction = valueAnimator.animatedValue as Float
+                val size = (fromSizePx + (toSizePx - fromSizePx) * fraction).toInt()
+                val icon = BitmapDescriptorFactory.fromBitmap(
+                    MapUtils.getLocationIconBitmap(
+                        this@MapsActivity,
+                        R.drawable.location_on_24,
+                        colorResId,
+                        sizePx = size
+                    )
+                )
+                marker.setIcon(icon)
+            }
+        }
+        animator.start()
     }
 
 

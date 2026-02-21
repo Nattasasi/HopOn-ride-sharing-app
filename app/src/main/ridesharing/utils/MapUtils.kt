@@ -8,6 +8,7 @@ import com.google.android.gms.maps.model.LatLng
 import com.tritech.hopon.R
 import kotlin.math.abs
 import kotlin.math.atan
+import kotlin.math.roundToInt
 
 
 object MapUtils {
@@ -32,11 +33,16 @@ object MapUtils {
         return bitmap
     }
 
-    fun getLocationIconBitmap(context: Context, drawableResId: Int, colorResId: Int): Bitmap {
+    fun getLocationIconBitmap(
+        context: Context,
+        drawableResId: Int,
+        colorResId: Int,
+        sizePx: Int = 72
+    ): Bitmap {
         val color = ContextCompat.getColor(context, colorResId)
 
-        val width = 60
-        val height = 60
+        val width = sizePx
+        val height = sizePx
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
@@ -44,8 +50,9 @@ object MapUtils {
             ?: return getDestinationBitmap()
 
         // Colorize the vector directly so the pin shape stays intact.
+        val padding = (sizePx * 0.0833f).roundToInt().coerceAtLeast(2)
         drawable.mutate().colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
-        drawable.setBounds(5, 5, width - 5, height - 5)
+        drawable.setBounds(padding, padding, width - padding, height - padding)
         drawable.draw(canvas)
 
         return bitmap
