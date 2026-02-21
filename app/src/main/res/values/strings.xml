@@ -20,7 +20,7 @@
     <string name="navigation_not_available">Navigation is not available on this device</string>
     <string name="navigation_missing_waypoints">Missing origin or destination for navigation</string>
     <string name="generic_error">Something went wrong</string>
-    <string name="create_ride">Create ride</string>
+    <string name="create_ride">Create Ride</string>
     <string name="selected_place">Selected place</string>
     <string name="rides_for_destination">Available rides</string>
     <string name="rides_for_destination_named">Available rides to %1$s</string>
@@ -28,6 +28,10 @@
     <string name="meetup_format">Meetup: %1$s</string>
     <string name="destination_format">Destination: %1$s</string>
     <string name="pickup_distance_format">Pickup distance: %1$s km</string>
+    <string name="meetup_datetime_format">Meetup date &amp; time: %1$s</string>
+    <string name="wait_time_format">Wait time: %1$d min</string>
+    <string name="host_detail_format">Host: %1$s • %2$s ★ • %3$s</string>
+    <string name="people_count_format">People on this ride: %1$d</string>
     <string name="ride_detail_title">Ride Detail</string>
     <string name="meetup_location_label">Meetup location</string>
     <string name="destination_label">Destination</string>

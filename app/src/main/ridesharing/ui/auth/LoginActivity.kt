@@ -2,19 +2,14 @@ package com.tritech.hopon.ui.auth
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import com.tritech.hopon.R
-import com.tritech.hopon.databinding.ActivityLoginBinding
-import com.tritech.hopon.ui.components.hopOnButton
 import com.tritech.hopon.ui.maps.MapsActivity
 import com.tritech.hopon.utils.SessionManager
 
 class LoginActivity : AppCompatActivity() {
-
-    private lateinit var binding: ActivityLoginBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,36 +20,16 @@ class LoginActivity : AppCompatActivity() {
             return
         }
 
-        binding = ActivityLoginBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        val emailEditText = binding.emailEditText
-        val passwordEditText = binding.passwordEditText
-        val loginButton = binding.loginButton
-
-        setUpLoginButtonCompose(emailEditText, passwordEditText)
-    }
-
-    private fun setUpLoginButtonCompose(emailEditText: EditText, passwordEditText: EditText) {
-        val loginButton = binding.loginButton
-        loginButton.setViewCompositionStrategy(
-            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
-        )
-        loginButton.setContent {
-            hopOnButton(
-                text = "Login",
-                onClick = {
-                    handleLoginClick(emailEditText, passwordEditText)
+        setContent {
+            loginScreen(
+                onLogin = { email, password ->
+                    handleLogin(email, password)
                 }
             )
         }
     }
 
-    private fun handleLoginClick(emailEditText: EditText, passwordEditText: EditText) {
-        // Read and normalize user input from the login form.
-        val email = emailEditText.text?.toString()?.trim().orEmpty()
-        val password = passwordEditText.text?.toString().orEmpty()
-
+    private fun handleLogin(email: String, password: String) {
         // Enforce required fields before proceeding.
         if (email.isEmpty() || password.isEmpty()) {
             Toast.makeText(this, getString(R.string.login_required_fields), Toast.LENGTH_SHORT)

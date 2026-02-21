@@ -22,6 +22,11 @@ fun rideResultCard(
     meetupLabel: String,
     destinationLabel: String,
     pickupDistanceKm: String,
+    hostName: String,
+    hostRating: Float,
+    hostVehicleType: String,
+    waitTimeMinutes: Int,
+    peopleCount: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -56,6 +61,29 @@ fun rideResultCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = accent,
                 modifier = Modifier.padding(top = 4.dp)
+            )
+            Text(
+                text = stringResource(
+                    id = R.string.host_detail_format,
+                    hostName,
+                    String.format(java.util.Locale.US, "%.1f", hostRating),
+                    hostVehicleType
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.DarkGray,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Text(
+                text = stringResource(id = R.string.wait_time_format, waitTimeMinutes),
+                style = MaterialTheme.typography.bodySmall,
+                color = accent,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Text(
+                text = stringResource(id = R.string.people_count_format, peopleCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.DarkGray,
+                modifier = Modifier.padding(top = 2.dp)
             )
         }
     }

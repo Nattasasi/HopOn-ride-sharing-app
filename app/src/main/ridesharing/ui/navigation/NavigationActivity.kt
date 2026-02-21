@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.navigation.NavigationApi
@@ -46,9 +47,14 @@ class NavigationActivity : AppCompatActivity() {
             return
         }
 
-        setContentView(R.layout.activity_navigation)
-        navigationView = findViewById(R.id.navigation_view)
-        navigationView.onCreate(savedInstanceState)
+        setContent {
+            navigationScreen(
+                savedInstanceState = savedInstanceState,
+                onViewReady = { view ->
+                    navigationView = view
+                }
+            )
+        }
 
         // Acquire navigator instance asynchronously, then start guidance.
         NavigationApi.getNavigator(this, object : NavigationApi.NavigatorListener {
@@ -70,21 +76,29 @@ class NavigationActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        navigationView.onStart()
+        if (::navigationView.isInitialized) {
+            navigationView.onStart()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        navigationView.onResume()
+        if (::navigationView.isInitialized) {
+            navigationView.onResume()
+        }
     }
 
     override fun onPause() {
-        navigationView.onPause()
+        if (::navigationView.isInitialized) {
+            navigationView.onPause()
+        }
         super.onPause()
     }
 
     override fun onStop() {
-        navigationView.onStop()
+        if (::navigationView.isInitialized) {
+            navigationView.onStop()
+        }
         super.onStop()
     }
 
@@ -92,7 +106,9 @@ class NavigationActivity : AppCompatActivity() {
         // Release navigation resources with activity lifecycle.
         navigator?.stopGuidance()
         navigator?.cleanup()
-        navigationView.onDestroy()
+        if (::navigationView.isInitialized) {
+            navigationView.onDestroy()
+        }
         super.onDestroy()
     }
 

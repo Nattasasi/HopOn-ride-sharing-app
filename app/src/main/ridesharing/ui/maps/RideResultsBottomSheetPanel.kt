@@ -44,7 +44,7 @@ import com.tritech.hopon.ui.components.rideResultCard
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-private val RideResultCardHeight = 80.dp
+private val RideResultCardHeight = 152.dp
 private val HandleHeight = 5.dp
 private val HandlePadding = 16.dp  // approximate top+bottom
 
@@ -187,6 +187,11 @@ fun rideResultsBottomSheetPanel(
                                         meetupLabel = ride.meetupLabel,
                                         destinationLabel = ride.destinationLabel,
                                         pickupDistanceKm = distanceKm,
+                                        hostName = ride.hostName,
+                                        hostRating = ride.hostRating,
+                                        hostVehicleType = ride.hostVehicleType,
+                                        waitTimeMinutes = ride.waitTimeMinutes,
+                                        peopleCount = ride.peopleCount,
                                         onClick = { onRideClick(ride) },
                                         modifier = Modifier.height(RideResultCardHeight)
                                     )

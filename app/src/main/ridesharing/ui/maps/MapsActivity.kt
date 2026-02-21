@@ -10,8 +10,6 @@ import android.location.Location
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.Log
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -34,7 +32,6 @@ import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.app.ActivityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.transition.AutoTransition
 import androidx.transition.TransitionManager
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -90,11 +87,21 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private data class PlaceholderPlace(val name: String, val latLng: LatLng)
 
+    private data class MockUser(
+        val name: String,
+        val rating: Float,
+        val vehicleType: String
+    )
+
     private data class MockRide(
         val meetupLabel: String,
         val meetupLatLng: LatLng,
         val destinationLabel: String,
-        val destinationLatLng: LatLng
+        val destinationLatLng: LatLng,
+        val meetupDateTimeLabel: String,
+        val waitTimeMinutes: Int,
+        val host: MockUser,
+        val peopleCount: Int
     )
 
     private lateinit var binding: ActivityMapsBinding
@@ -124,12 +131,14 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var meetupMarkerIconSelected: BitmapDescriptor? = null
     private var selectedMeetupMarker: Marker? = null
     private var isSearchBarAtTop = false
-    private lateinit var predictionAdapter: PlacePredictionAdapter
     private val searchDebounceHandler = Handler(Looper.getMainLooper())
     private var pendingSearchRunnable: Runnable? = null
     private var latestRequestToken = 0L
-    private var latestPredictions: List<AutocompletePrediction> = emptyList()
-    private var suppressSearchWatcher = false
+    private var latestPredictions by mutableStateOf<List<AutocompletePrediction>>(emptyList())
+    private var showEmptyPredictions by mutableStateOf(false)
+    private var searchQuery by mutableStateOf("")
+    private var shouldRequestSearchFocus by mutableStateOf(false)
+    private var clearSearchFocusSignal by mutableStateOf(0)
     private var isRidePanelVisible by mutableStateOf(false)
     private var ridePanelItems by mutableStateOf<List<RideListItem>>(emptyList())
     private var allRidePanelItems by mutableStateOf<List<RideListItem>>(emptyList())
@@ -145,19 +154,28 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     )
     private var placeholderPlaceIndex = 0
 
+    private val mockUsers = listOf(
+        MockUser("Narin P.", 4.9f, "Toyota Yaris"),
+        MockUser("Mali S.", 4.8f, "Honda City"),
+        MockUser("Krit T.", 4.7f, "Mazda 2"),
+        MockUser("Pimchanok R.", 4.9f, "Tesla Model 3"),
+        MockUser("Thanawat K.", 4.6f, "Nissan Almera"),
+        MockUser("Suda C.", 4.8f, "Mitsubishi Attrage")
+    )
+
     private val mockRides = listOf(
-        MockRide("Asok BTS", LatLng(13.7370, 100.5603), "Siam Paragon", LatLng(13.7466, 100.5347)),
-        MockRide("Phrom Phong", LatLng(13.7306, 100.5696), "Siam Paragon", LatLng(13.7466, 100.5347)),
-        MockRide("Chit Lom", LatLng(13.7449, 100.5431), "Siam Paragon", LatLng(13.7466, 100.5347)),
-        MockRide("Nana", LatLng(13.7405, 100.5550), "CentralWorld", LatLng(13.7460, 100.5395)),
-        MockRide("Ratchathewi", LatLng(13.7514, 100.5310), "CentralWorld", LatLng(13.7460, 100.5395)),
-        MockRide("Victory Monument", LatLng(13.7628, 100.5372), "CentralWorld", LatLng(13.7460, 100.5395)),
-        MockRide("Sukhumvit Soi 11", LatLng(13.7429, 100.5559), "Terminal 21", LatLng(13.7373, 100.5607)),
-        MockRide("Benjasiri Park", LatLng(13.7308, 100.5680), "Terminal 21", LatLng(13.7373, 100.5607)),
-        MockRide("Ekkamai", LatLng(13.7197, 100.5850), "Terminal 21", LatLng(13.7373, 100.5607)),
-        MockRide("Silom Complex", LatLng(13.7296, 100.5349), "Siam Paragon", LatLng(13.7466, 100.5347)),
-        MockRide("Samyan Mitrtown", LatLng(13.7327, 100.5291), "CentralWorld", LatLng(13.7460, 100.5395)),
-        MockRide("Thong Lo", LatLng(13.7241, 100.5783), "Terminal 21", LatLng(13.7373, 100.5607))
+        MockRide("Asok BTS", LatLng(13.7370, 100.5603), "Siam Paragon", LatLng(13.7466, 100.5347), "Today, 18:15", 5, mockUsers[0], 3),
+        MockRide("Phrom Phong", LatLng(13.7306, 100.5696), "Siam Paragon", LatLng(13.7466, 100.5347), "Today, 18:30", 8, mockUsers[1], 2),
+        MockRide("Chit Lom", LatLng(13.7449, 100.5431), "Siam Paragon", LatLng(13.7466, 100.5347), "Today, 18:45", 3, mockUsers[2], 4),
+        MockRide("Nana", LatLng(13.7405, 100.5550), "CentralWorld", LatLng(13.7460, 100.5395), "Today, 19:00", 6, mockUsers[3], 3),
+        MockRide("Ratchathewi", LatLng(13.7514, 100.5310), "CentralWorld", LatLng(13.7460, 100.5395), "Today, 19:10", 4, mockUsers[4], 2),
+        MockRide("Victory Monument", LatLng(13.7628, 100.5372), "CentralWorld", LatLng(13.7460, 100.5395), "Today, 19:20", 7, mockUsers[5], 4),
+        MockRide("Sukhumvit Soi 11", LatLng(13.7429, 100.5559), "Terminal 21", LatLng(13.7373, 100.5607), "Today, 20:00", 2, mockUsers[0], 1),
+        MockRide("Benjasiri Park", LatLng(13.7308, 100.5680), "Terminal 21", LatLng(13.7373, 100.5607), "Today, 20:15", 6, mockUsers[1], 3),
+        MockRide("Ekkamai", LatLng(13.7197, 100.5850), "Terminal 21", LatLng(13.7373, 100.5607), "Today, 20:30", 9, mockUsers[2], 4),
+        MockRide("Silom Complex", LatLng(13.7296, 100.5349), "Siam Paragon", LatLng(13.7466, 100.5347), "Tomorrow, 07:45", 12, mockUsers[3], 2),
+        MockRide("Samyan Mitrtown", LatLng(13.7327, 100.5291), "CentralWorld", LatLng(13.7460, 100.5395), "Tomorrow, 08:00", 10, mockUsers[4], 3),
+        MockRide("Thong Lo", LatLng(13.7241, 100.5783), "Terminal 21", LatLng(13.7373, 100.5607), "Tomorrow, 08:30", 11, mockUsers[5], 2)
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -175,6 +193,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         ViewUtils.enableTransparentStatusBar(window)
         setUpImeSpacing()
         setUpRideResultsPanelCompose()
+        setUpPredictionsCompose()
+        setUpSearchBarCompose()
         setUpBackPressHandler()
 
         // Live mode initializes Places API client + websocket presenter.
@@ -196,7 +216,6 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         pickUpLatLng = mockCurrentLocation
 
         setUpClickListener()
-        setUpInlineSearch()
     }
 
     private fun setUpBackPressHandler() {
@@ -222,16 +241,13 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         pendingSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
         pendingSearchRunnable = null
         latestPredictions = emptyList()
-        predictionAdapter.submitList(emptyList())
-        binding.emptyPredictionsTextView.visibility = View.GONE
+        showEmptyPredictions = false
         binding.predictionsCard.visibility = View.GONE
-        binding.searchBarTextView.clearFocus()
-        val imm = getSystemService(InputMethodManager::class.java)
-        imm?.hideSoftInputFromWindow(binding.searchBarTextView.windowToken, 0)
+        searchQuery = ""
+        clearSearchFocus()
 
         hideRideResultsPanel(clearData = true)
         binding.createRideButton.visibility = View.GONE
-        binding.searchBarTextView.setText("")
         moveSearchBarToBottom()
         return true
     }
@@ -255,6 +271,54 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         }
     }
 
+    private fun setUpPredictionsCompose() {
+        binding.predictionsCompose.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.predictionsCompose.setContent {
+            placePredictionsPanel(
+                predictions = latestPredictions,
+                showEmptyState = showEmptyPredictions,
+                onPredictionClick = ::fetchPlaceDetailsAndApplySelection
+            )
+        }
+    }
+
+    private fun setUpSearchBarCompose() {
+        binding.searchBarContainer.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.searchBarContainer.setContent {
+            mapSearchBar(
+                query = searchQuery,
+                requestFocus = shouldRequestSearchFocus,
+                onFocusHandled = { shouldRequestSearchFocus = false },
+                clearFocusSignal = clearSearchFocusSignal,
+                onFocusChanged = { hasFocus ->
+                    if (hasFocus && !BuildConfig.USE_MOCK_DATA) {
+                        activateInlineSearchMode()
+                    }
+                },
+                onQueryChange = { newValue ->
+                    searchQuery = newValue
+                    handleSearchQueryChange(newValue)
+                },
+                onSearchAction = {
+                    if (latestPredictions.isNotEmpty()) {
+                        fetchPlaceDetailsAndApplySelection(latestPredictions[0])
+                    }
+                },
+                onClick = {
+                    if (BuildConfig.USE_MOCK_DATA) {
+                        applyPlaceholderPlaceSelection()
+                    } else {
+                        activateInlineSearchMode()
+                    }
+                }
+            )
+        }
+    }
+
     private fun openRideDetail(ride: RideListItem) {
             val distanceKm = String.format(Locale.US, "%.2f", ride.pickupDistanceMeters / 1000f)
             startActivity(
@@ -262,7 +326,13 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     this,
                     ride.meetupLabel,
                     ride.destinationLabel,
-                    distanceKm
+                    distanceKm,
+                    ride.meetupDateTimeLabel,
+                    ride.waitTimeMinutes,
+                    ride.hostName,
+                    ride.hostRating,
+                    ride.hostVehicleType,
+                    ride.peopleCount
                 )
             )
     }
@@ -354,81 +424,27 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         }
     }
 
-    private fun setUpInlineSearch() {
-        predictionAdapter = PlacePredictionAdapter(emptyList()) { prediction ->
-            fetchPlaceDetailsAndApplySelection(prediction)
-        }
-        binding.predictionsRecyclerView.layoutManager = LinearLayoutManager(this)
-        binding.predictionsRecyclerView.adapter = predictionAdapter
-
-        binding.searchBarTextView.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                if (suppressSearchWatcher || BuildConfig.USE_MOCK_DATA) {
-                    return
-                }
-
-                clearSelectedMeetupMarker()
-
-                if (!isSearchBarAtTop) {
-                    moveSearchBarToTop()
-                }
-
-                // Hide ride results while typing a new query.
-                hideRideResultsPanel(clearData = true)
-                binding.createRideButton.visibility = View.GONE
-
-                pendingSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
-                val query = s?.toString().orEmpty()
-                pendingSearchRunnable = Runnable { fetchAutocompletePredictions(query) }
-                searchDebounceHandler.postDelayed(pendingSearchRunnable!!, 300)
-            }
-
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
-
-        binding.searchBarTextView.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus && !BuildConfig.USE_MOCK_DATA) {
-                moveSearchBarToTop()
-                val query = binding.searchBarTextView.text?.toString().orEmpty().trim()
-                if (query.length >= 2) {
-                    fetchAutocompletePredictions(query)
-                }
-            }
+    private fun handleSearchQueryChange(query: String) {
+        if (BuildConfig.USE_MOCK_DATA) {
+            return
         }
 
-        // Handle Enter key to auto-select first autocomplete suggestion
-        binding.searchBarTextView.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
-                // Select the first prediction if available
-                if (latestPredictions.isNotEmpty()) {
-                    fetchPlaceDetailsAndApplySelection(latestPredictions[0])
-                }
-                true
-            } else {
-                false
-            }
+        clearSelectedMeetupMarker()
+
+        if (!isSearchBarAtTop) {
+            moveSearchBarToTop()
         }
+
+        // Hide ride results while typing a new query.
+        hideRideResultsPanel(clearData = true)
+        binding.createRideButton.visibility = View.GONE
+
+        pendingSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+        pendingSearchRunnable = Runnable { fetchAutocompletePredictions(query) }
+        searchDebounceHandler.postDelayed(pendingSearchRunnable!!, 300)
     }
 
     private fun setUpClickListener() {
-        // Search interaction uses placeholder in mock mode or Places in live mode.
-        binding.searchBarContainer.setOnClickListener {
-            if (BuildConfig.USE_MOCK_DATA) {
-                applyPlaceholderPlaceSelection()
-            } else {
-                activateInlineSearchMode()
-            }
-        }
-        binding.searchBarTextView.setOnClickListener {
-            if (BuildConfig.USE_MOCK_DATA) {
-                applyPlaceholderPlaceSelection()
-            } else {
-                activateInlineSearchMode()
-            }
-        }
-
         // Map touch overlay - tapping empty map area restores default UI
         binding.mapTouchOverlay.setOnClickListener {
             restoreDefaultMapUiIfNeeded()
@@ -498,18 +514,15 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.createRideButton.visibility = View.GONE
 
         moveSearchBarToTop()
-        binding.searchBarTextView.requestFocus()
-        binding.searchBarTextView.setSelection(binding.searchBarTextView.text?.length ?: 0)
-        val imm = getSystemService(InputMethodManager::class.java)
-        imm?.showSoftInput(binding.searchBarTextView, InputMethodManager.SHOW_IMPLICIT)
-
-        val currentText = binding.searchBarTextView.text?.toString().orEmpty()
-        if (currentText == getString(R.string.where_to)) {
-            suppressSearchWatcher = true
-            binding.searchBarTextView.setText("")
-            suppressSearchWatcher = false
-        }
+        shouldRequestSearchFocus = true
         binding.predictionsCard.visibility = View.VISIBLE
+    }
+
+    private fun clearSearchFocus() {
+        shouldRequestSearchFocus = false
+        clearSearchFocusSignal += 1
+        val imm = getSystemService(InputMethodManager::class.java)
+        imm?.hideSoftInputFromWindow(binding.searchBarContainer.windowToken, 0)
     }
 
     private fun fetchAutocompletePredictions(query: String) {
@@ -517,8 +530,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         val trimmedQuery = query.trim()
         if (trimmedQuery.length < 2) {
             latestPredictions = emptyList()
-            predictionAdapter.submitList(emptyList())
-            binding.emptyPredictionsTextView.visibility = View.GONE
+            showEmptyPredictions = false
             return
         }
 
@@ -529,19 +541,17 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
         client.findAutocompletePredictions(request)
             .addOnSuccessListener { response ->
-                val currentQuery = binding.searchBarTextView.text?.toString().orEmpty().trim()
+                val currentQuery = searchQuery.trim()
                 if (requestToken != latestRequestToken || currentQuery != trimmedQuery) {
                     return@addOnSuccessListener
                 }
                 latestPredictions = response.autocompletePredictions
-                predictionAdapter.submitList(latestPredictions)
-                val showEmpty = currentQuery.length >= 2 && latestPredictions.isEmpty()
-                binding.emptyPredictionsTextView.visibility = if (showEmpty) View.VISIBLE else View.GONE
+                showEmptyPredictions = currentQuery.length >= 2 && latestPredictions.isEmpty()
                 binding.predictionsCard.visibility = View.VISIBLE
             }
             .addOnFailureListener {
-                predictionAdapter.submitList(emptyList())
-                binding.emptyPredictionsTextView.visibility = View.GONE
+                latestPredictions = emptyList()
+                showEmptyPredictions = false
             }
     }
 
@@ -561,9 +571,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 }
                 applySelectedPlace(prediction.getFullText(null).toString(), latLng)
                 binding.predictionsCard.visibility = View.GONE
-                binding.searchBarTextView.clearFocus()
-                val imm = getSystemService(InputMethodManager::class.java)
-                imm?.hideSoftInputFromWindow(binding.searchBarTextView.windowToken, 0)
+                clearSearchFocus()
             }
             .addOnFailureListener {
                 Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
@@ -580,9 +588,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun applySelectedPlace(name: String, latLng: LatLng) {
         // Update selected destination in UI and map state.
         dropLatLng = latLng
-        suppressSearchWatcher = true
-        binding.searchBarTextView.setText(name)
-        suppressSearchWatcher = false
+        searchQuery = name
+        shouldRequestSearchFocus = false
         moveSearchBarToTop()
         showRideResultsPanel()
         binding.createRideButton.visibility = View.VISIBLE
@@ -616,7 +623,13 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     meetupLatLng = ride.meetupLatLng,
                     destinationLabel = ride.destinationLabel,
                     destinationLatLng = ride.destinationLatLng,
-                    pickupDistanceMeters = calculatePickupDistanceMeters(ride.meetupLatLng)
+                    pickupDistanceMeters = calculatePickupDistanceMeters(ride.meetupLatLng),
+                    meetupDateTimeLabel = ride.meetupDateTimeLabel,
+                    waitTimeMinutes = ride.waitTimeMinutes,
+                    hostName = ride.host.name,
+                    hostRating = ride.host.rating,
+                    hostVehicleType = ride.host.vehicleType,
+                    peopleCount = ride.peopleCount
                 )
             }
             .sortedBy { it.pickupDistanceMeters }
@@ -625,38 +638,6 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         allRidePanelItems = rideItems
         addMeetupLocationMarkers(rideItems)
         return rideItems
-    }
-
-    private class PlacePredictionAdapter(
-        private var items: List<AutocompletePrediction>,
-        private val onClick: (AutocompletePrediction) -> Unit
-    ) : androidx.recyclerview.widget.RecyclerView.Adapter<PlacePredictionAdapter.PredictionViewHolder>() {
-
-        fun submitList(newItems: List<AutocompletePrediction>) {
-            items = newItems
-            notifyDataSetChanged()
-        }
-
-        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): PredictionViewHolder {
-            val view = android.view.LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_place_prediction, parent, false)
-            return PredictionViewHolder(view)
-        }
-
-        override fun onBindViewHolder(holder: PredictionViewHolder, position: Int) {
-            holder.bind(items[position], onClick)
-        }
-
-        override fun getItemCount(): Int = items.size
-
-        class PredictionViewHolder(itemView: android.view.View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView) {
-            private val textView: android.widget.TextView = itemView.findViewById(R.id.predictionTextView)
-
-            fun bind(item: AutocompletePrediction, onClick: (AutocompletePrediction) -> Unit) {
-                textView.text = item.getFullText(null).toString()
-                itemView.setOnClickListener { onClick(item) }
-            }
-        }
     }
 
     private fun calculatePickupDistanceMeters(meetupLatLng: LatLng): Float {
@@ -765,7 +746,8 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         // Restore map and UI to pre-booking default state.
         binding.createRideButton.visibility = View.GONE
         hideRideResultsPanel(clearData = true)
-        binding.searchBarTextView.setText("")
+        searchQuery = ""
+        clearSearchFocus()
         moveSearchBarToBottom()
 
         previousLatLngFromServer = null
@@ -918,6 +900,7 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         // Tapping empty map area collapses ride result panel if visible, otherwise restores default UI.
         this.googleMap.setOnMapClickListener {
             clearSelectedMeetupMarker()
+            clearSearchFocus()
             if (isRidePanelVisible) {
                 collapseRidePanel()
             } else {

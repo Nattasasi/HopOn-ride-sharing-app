@@ -7,5 +7,11 @@ data class RideListItem(
     val meetupLatLng: LatLng,
     val destinationLabel: String,
     val destinationLatLng: LatLng,
-    val pickupDistanceMeters: Float
+    val pickupDistanceMeters: Float,
+    val meetupDateTimeLabel: String,
+    val waitTimeMinutes: Int,
+    val hostName: String,
+    val hostRating: Float,
+    val hostVehicleType: String,
+    val peopleCount: Int
 )
