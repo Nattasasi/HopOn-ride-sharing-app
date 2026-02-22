@@ -40,6 +40,8 @@
     <string name="nav_rides">Rides</string>
     <string name="nav_history">History</string>
     <string name="nav_profile">Profile</string>
+    <string name="profile_title">Profile</string>
+    <string name="logout">Log out</string>
     <string name="login_title">Welcome to HopOn</string>
     <string name="email">Email</string>
     <string name="password">Password</string>
@@ -47,4 +49,7 @@
     <string name="login_required_fields">Please enter email and password</string>
     <string name="close">Close</string>
     <string name="no_places_found">No places found</string>
+    <string name="no_ride_history">No joined or created rides yet</string>
+    <string name="ride_in_process_title">Ride In Process</string>
+    <string name="ride_in_process_placeholder">Placeholder Screen</string>
 </resources>

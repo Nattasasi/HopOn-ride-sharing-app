@@ -1,0 +1,1266 @@
+package com.tritech.hopon.ui.rideDiscovery.screen
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.location.Location
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.transition.AutoTransition
+import android.transition.TransitionManager
+import android.util.Log
+import android.view.View
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.OnMapReadyCallback
+import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.MapStyleOptions
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.gms.maps.model.Marker
+import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.Polyline
+import com.google.android.gms.maps.model.PolylineOptions
+import com.google.android.libraries.places.api.Places
+import com.google.android.libraries.places.api.model.AutocompletePrediction
+import com.tritech.hopon.BuildConfig
+import com.tritech.hopon.R
+import com.tritech.hopon.data.network.NetworkService
+import com.tritech.hopon.databinding.ActivityMapsBinding
+import com.tritech.hopon.ui.auth.LoginActivity
+import com.tritech.hopon.ui.rideDiscovery.components.MapsBottomNavAction
+import com.tritech.hopon.ui.rideDiscovery.components.MapsBottomNavItem
+import com.tritech.hopon.ui.rideDiscovery.components.mapBottomNavItemToAction
+import com.tritech.hopon.ui.rideDiscovery.components.mapSearchBar
+import com.tritech.hopon.ui.rideDiscovery.components.mapsBottomNavigation
+import com.tritech.hopon.ui.rideDiscovery.components.placePredictionsPanel
+import com.tritech.hopon.ui.rideDiscovery.components.rideResultsBottomSheetPanel
+import com.tritech.hopon.ui.rideDiscovery.core.MapUiStateCoordinator
+import com.tritech.hopon.ui.rideDiscovery.core.RidePanelCoordinator
+import com.tritech.hopon.ui.rideDiscovery.core.SearchUiCoordinator
+import com.tritech.hopon.ui.rideDiscovery.core.MeetupMarkerController
+import com.tritech.hopon.ui.rideDiscovery.core.PlacesSearchDataSource
+import com.tritech.hopon.ui.rideDiscovery.core.RoutesApiClient
+import com.tritech.hopon.ui.rideDiscovery.core.MockData
+import com.tritech.hopon.ui.rideDiscovery.core.RideListItem
+import com.tritech.hopon.ui.rideDiscovery.core.MapsPresenter
+import com.tritech.hopon.ui.rideDiscovery.core.MapsView
+import com.tritech.hopon.ui.rides.RideDetailActivity
+import com.tritech.hopon.ui.rides.components.historyRidesScreen
+import com.tritech.hopon.ui.rides.components.profileScreen
+import com.tritech.hopon.ui.rides.components.rideInProcessScreen
+import com.tritech.hopon.ui.rides.core.RideHistoryProvider
+import com.tritech.hopon.utils.AnimationUtils
+import com.tritech.hopon.utils.MapUtils
+import com.tritech.hopon.utils.PermissionUtils
+import com.tritech.hopon.utils.SessionManager
+import com.tritech.hopon.ui.components.hopOnButton
+import com.tritech.hopon.utils.ViewUtils
+import java.util.Locale
+
+class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
+
+    companion object {
+        private const val TAG = "RootHostActivity"
+        private const val LOCATION_PERMISSION_REQUEST_CODE = 999
+        private const val PLACE_REQUEST_CODE = 2001
+    }
+
+    private lateinit var binding: ActivityMapsBinding
+    private lateinit var searchUiCoordinator: SearchUiCoordinator
+    private lateinit var mapUiStateCoordinator: MapUiStateCoordinator
+    private lateinit var ridePanelCoordinator: RidePanelCoordinator
+    private lateinit var googleMap: GoogleMap
+    private var isMapReady = false
+    private var presenter: MapsPresenter? = null
+    private var fusedLocationProviderClient: FusedLocationProviderClient? = null
+    private lateinit var locationCallback: LocationCallback
+    private var placesSearchDataSource: PlacesSearchDataSource? = null
+    private val routesApiClient = RoutesApiClient()
+
+    private var currentLatLng: LatLng? = null
+    private var pickUpLatLng: LatLng? = null
+    private var dropLatLng: LatLng? = null
+
+    // Mock current location: Assumption University Thailand (13.7370, 100.6270)
+    private val mockCurrentLocation = LatLng(13.7370, 100.6270)
+
+    private var destinationMarker: Marker? = null
+    private var originMarker: Marker? = null
+    private var greyPolyLine: Polyline? = null
+    private var blackPolyline: Polyline? = null
+    private var previousLatLngFromServer: LatLng? = null
+    private var currentLatLngFromServer: LatLng? = null
+    private var movingCabMarker: Marker? = null
+    private var meetupMarkerController: MeetupMarkerController? = null
+    private val searchDebounceHandler = Handler(Looper.getMainLooper())
+    private var pendingSearchRunnable: Runnable? = null
+    private var latestRequestToken = 0L
+    private var latestPredictions by mutableStateOf<List<AutocompletePrediction>>(emptyList())
+    private var showEmptyPredictions by mutableStateOf(false)
+    private var searchQuery by mutableStateOf("")
+    private var shouldRequestSearchFocus by mutableStateOf(false)
+    private var clearSearchFocusSignal by mutableStateOf(0)
+    private var isRidePanelVisible by mutableStateOf(false)
+    private var ridePanelItems by mutableStateOf<List<RideListItem>>(emptyList())
+    private var allRidePanelItems by mutableStateOf<List<RideListItem>>(emptyList())
+    private var isRidePanelExpanded by mutableStateOf(false)
+    private var selectedRide by mutableStateOf<RideListItem?>(null)
+    private var selectedBottomNavItem by mutableStateOf(MapsBottomNavItem.HOME)
+    private var isHistoryVisible by mutableStateOf(false)
+    private var isProfileVisible by mutableStateOf(false)
+    private var isRideInProcessVisible by mutableStateOf(false)
+    private var historyRideItems by mutableStateOf<List<RideListItem>>(emptyList())
+    private var rideRoutePolyline: Polyline? = null
+    private var pickupRoutePolyline: Polyline? = null
+    private val meetupPinSizePx = 94
+    private val meetupPinSelectedSizePx = 112
+
+    private var placeholderPlaceIndex = 0
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Require authenticated session before entering map flow.
+        if (!SessionManager.isLoggedIn(this)) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
+        binding = ActivityMapsBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        searchUiCoordinator = SearchUiCoordinator(this, binding)
+        ridePanelCoordinator = RidePanelCoordinator(
+            ridesBottomSheetCard = binding.ridesBottomSheetCard,
+            mapTouchOverlay = binding.mapTouchOverlay,
+            clearMeetupLocationMarkers = ::clearMeetupLocationMarkers,
+            clearRideDetailSelection = ::clearRideDetailSelection,
+            setRidePanelVisible = { isRidePanelVisible = it },
+            setRidePanelExpanded = { isRidePanelExpanded = it },
+            setRidePanelItems = { ridePanelItems = it },
+            isRidePanelVisible = { isRidePanelVisible }
+        )
+        mapUiStateCoordinator = MapUiStateCoordinator(
+            hasSelectedRide = { selectedRide != null },
+            clearRideDetailSelection = ::clearRideDetailSelection,
+            isRidePanelVisible = { isRidePanelVisible },
+            isRidePanelExpanded = { isRidePanelExpanded },
+            collapseRidePanel = ::collapseRidePanel,
+            isSearchBarAtTop = { searchUiCoordinator.isSearchBarAtTop() },
+            isPredictionsVisible = { binding.predictionsCard.visibility == View.VISIBLE },
+            clearPendingSearch = {
+                pendingSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+                pendingSearchRunnable = null
+            },
+            clearPredictionsState = {
+                latestPredictions = emptyList()
+                showEmptyPredictions = false
+            },
+            hidePredictionsCard = { binding.predictionsCard.visibility = View.GONE },
+            clearSearchQuery = { searchQuery = "" },
+            clearSearchFocus = ::clearSearchFocus,
+            hideRideResultsPanel = ::hideRideResultsPanel,
+            hideCreateRideButton = { binding.createRideButton.visibility = View.GONE },
+            moveSearchBarToBottom = ::moveSearchBarToBottom
+        )
+        ViewUtils.enableTransparentStatusBar(window)
+        setUpImeSpacing()
+        setUpRideResultsPanelCompose()
+        setUpHistoryCompose()
+        setUpProfileCompose()
+        setUpRideInProcessCompose()
+        setUpPredictionsCompose()
+        setUpSearchBarCompose()
+        setUpBackPressHandler()
+
+        // Live mode initializes Places API client + websocket presenter.
+        if (!BuildConfig.USE_MOCK_DATA) {
+            if (!Places.isInitialized()) {
+                Places.initialize(applicationContext, getString(R.string.google_maps_key))
+            }
+            placesSearchDataSource = PlacesSearchDataSource(Places.createClient(this))
+            presenter = MapsPresenter(NetworkService())
+            presenter?.onAttach(this)
+        }
+
+        val mapFragment = supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
+        mapFragment.getMapAsync(this)
+
+        // Initialize to Assumption University as default for testing on emulator without GPS.
+        // Real location provider will override this if a valid location is obtained.
+        currentLatLng = mockCurrentLocation
+        pickUpLatLng = mockCurrentLocation
+
+        setUpClickListener()
+    }
+
+    private fun setUpBackPressHandler() {
+        mapUiStateCoordinator.setUpBackPressHandler(this) {
+            if (isHistoryVisible || isProfileVisible || isRideInProcessVisible) {
+                selectedBottomNavItem = MapsBottomNavItem.HOME
+                showMapContent()
+            } else {
+                finish()
+            }
+        }
+    }
+
+    private fun dismissTransientMapUi(): Boolean {
+        return mapUiStateCoordinator.dismissTransientMapUi()
+    }
+
+    private fun restoreDefaultMapUiIfNeeded(): Boolean {
+        return mapUiStateCoordinator.restoreDefaultMapUiIfNeeded()
+    }
+
+    private fun setUpRideResultsPanelCompose() {
+        binding.ridesBottomSheetCard.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.ridesBottomSheetCard.setContent {
+            rideResultsBottomSheetPanel(
+                visible = isRidePanelVisible,
+                expanded = isRidePanelExpanded,
+                onExpandChange = { expanded ->
+                    if (expanded) expandRidePanel() else collapseRidePanel()
+                },
+                rides = ridePanelItems,
+                selectedRide = selectedRide,
+                onRideClick = { ride ->
+                    selectRideForDetail(ride)
+                }
+            )
+        }
+    }
+
+    private fun setUpPredictionsCompose() {
+        binding.predictionsCompose.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.predictionsCompose.setContent {
+            placePredictionsPanel(
+                predictions = latestPredictions,
+                showEmptyState = showEmptyPredictions,
+                onPredictionClick = ::fetchPlaceDetailsAndApplySelection
+            )
+        }
+    }
+
+    private fun setUpHistoryCompose() {
+        binding.historyContent.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.historyContent.setContent {
+            historyRidesScreen(
+                rides = historyRideItems,
+                onRideClick = ::openRideDetail
+            )
+        }
+    }
+
+    private fun setUpProfileCompose() {
+        binding.profileContent.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.profileContent.setContent {
+            profileScreen(
+                userName = SessionManager.getCurrentUserId(this) ?: "u001",
+                onLogoutClick = ::logoutAndNavigateToLogin
+            )
+        }
+    }
+
+    private fun setUpRideInProcessCompose() {
+        binding.rideInProcessContent.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.rideInProcessContent.setContent {
+            rideInProcessScreen()
+        }
+    }
+
+    private fun setUpSearchBarCompose() {
+        binding.searchBarContainer.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.searchBarContainer.setContent {
+            mapSearchBar(
+                query = searchQuery,
+                requestFocus = shouldRequestSearchFocus,
+                onFocusHandled = { shouldRequestSearchFocus = false },
+                clearFocusSignal = clearSearchFocusSignal,
+                onFocusChanged = { hasFocus ->
+                    if (hasFocus && !BuildConfig.USE_MOCK_DATA) {
+                        activateInlineSearchMode()
+                    }
+                },
+                onQueryChange = { newValue ->
+                    searchQuery = newValue
+                    handleSearchQueryChange(newValue)
+                },
+                onSearchAction = {
+                    handleSearchAction()
+                },
+                onClick = {
+                    if (BuildConfig.USE_MOCK_DATA) {
+                        applyPlaceholderPlaceSelection()
+                    } else {
+                        activateInlineSearchMode()
+                    }
+                }
+            )
+        }
+    }
+
+    private fun openRideDetail(ride: RideListItem) {
+            val distanceKm = String.format(Locale.US, "%.2f", ride.pickupDistanceMeters / 1000f)
+            startActivity(
+                RideDetailActivity.createIntent(
+                    this,
+                    ride.meetupLabel,
+                    ride.destinationLabel,
+                    distanceKm,
+                    ride.meetupDateTimeLabel,
+                    ride.waitTimeMinutes,
+                    ride.hostName,
+                    ride.hostRating,
+                    ride.hostVehicleType,
+                    ride.peopleCount
+                )
+            )
+    }
+
+    private fun selectRideForDetail(ride: RideListItem) {
+        selectedRide = ride
+        collapseRidePanel()  // Reset to peek state when showing detail
+        requestRideRoute(ride.meetupLatLng, ride.destinationLatLng)
+        currentLatLng?.let { requestPickupRoute(it, ride.meetupLatLng) }
+        
+        // Find and highlight the corresponding marker
+        clearSelectedMeetupMarker()
+        val marker = meetupMarkerController?.findMarkerForRide(ride)
+        marker?.let {
+            meetupMarkerController?.setSelectedMarker(it)
+        }
+        
+        // Show "Join Ride" button
+        binding.createRideButton.visibility = View.VISIBLE
+    }
+
+    private fun clearRideDetailSelection() {
+        selectedRide = null
+        rideRoutePolyline?.remove()
+        rideRoutePolyline = null
+        pickupRoutePolyline?.remove()
+        pickupRoutePolyline = null
+        
+        // Clear marker selection
+        clearSelectedMeetupMarker()
+        
+        // Hide "Join Ride" button
+        binding.createRideButton.visibility = View.GONE
+    }
+
+    private fun requestRideRoute(meetupLatLng: LatLng, destinationLatLng: LatLng) {
+        val routesApiKey = getString(R.string.routes_api_key)
+        if (routesApiKey.isBlank()) {
+            drawRideRouteFallback(meetupLatLng, destinationLatLng)
+            return
+        }
+
+        routesApiClient.computeRoute(
+            origin = meetupLatLng,
+            destination = destinationLatLng,
+            routesApiKey = routesApiKey
+        ) { latLngList ->
+            runOnUiThread {
+                if (latLngList != null && latLngList.size >= 2) {
+                    drawRideRoutePath(latLngList)
+                } else {
+                    drawRideRouteFallback(meetupLatLng, destinationLatLng)
+                }
+            }
+        }
+    }
+
+    private fun drawRideRoutePath(latLngList: List<LatLng>) {
+        rideRoutePolyline?.remove()
+
+        val builder = LatLngBounds.Builder()
+        for (latLng in latLngList) {
+            builder.include(latLng)
+        }
+        val bounds = builder.build()
+        googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 100))
+
+        val polylineOptions = PolylineOptions()
+        polylineOptions.color(ContextCompat.getColor(this, R.color.colorAccent))
+        polylineOptions.width(8f)
+        polylineOptions.addAll(latLngList)
+        rideRoutePolyline = googleMap.addPolyline(polylineOptions)
+    }
+
+    private fun drawRideRouteFallback(meetupLatLng: LatLng, destinationLatLng: LatLng) {
+        rideRoutePolyline?.remove()
+
+        val polylineOptions = PolylineOptions()
+        polylineOptions.color(ContextCompat.getColor(this, R.color.colorAccent))
+        polylineOptions.width(8f)
+        polylineOptions.add(meetupLatLng, destinationLatLng)
+        rideRoutePolyline = googleMap.addPolyline(polylineOptions)
+    }
+
+    private fun requestPickupRoute(startLatLng: LatLng, meetupLatLng: LatLng) {
+        val routesApiKey = getString(R.string.routes_api_key)
+        if (routesApiKey.isBlank()) {
+            drawPickupRouteFallback(startLatLng, meetupLatLng)
+            return
+        }
+
+        routesApiClient.computeRoute(
+            origin = startLatLng,
+            destination = meetupLatLng,
+            routesApiKey = routesApiKey
+        ) { latLngList ->
+            runOnUiThread {
+                if (latLngList != null && latLngList.size >= 2) {
+                    drawPickupRoutePath(latLngList)
+                } else {
+                    drawPickupRouteFallback(startLatLng, meetupLatLng)
+                }
+            }
+        }
+    }
+
+    private fun drawPickupRoutePath(latLngList: List<LatLng>) {
+        pickupRoutePolyline?.remove()
+
+        val polylineOptions = PolylineOptions()
+        polylineOptions.color(ContextCompat.getColor(this, R.color.colorPrimary))
+        polylineOptions.width(8f)
+        polylineOptions.addAll(latLngList)
+        pickupRoutePolyline = googleMap.addPolyline(polylineOptions)
+    }
+
+    private fun drawPickupRouteFallback(startLatLng: LatLng, meetupLatLng: LatLng) {
+        pickupRoutePolyline?.remove()
+
+        val polylineOptions = PolylineOptions()
+        polylineOptions.color(ContextCompat.getColor(this, R.color.colorPrimary))
+        polylineOptions.width(8f)
+        polylineOptions.add(startLatLng, meetupLatLng)
+        pickupRoutePolyline = googleMap.addPolyline(polylineOptions)
+    }
+
+    private fun showRideResultsPanel() {
+        ridePanelCoordinator.showRideResultsPanel()
+    }
+
+    private fun hideRideResultsPanel(clearData: Boolean) {
+        ridePanelCoordinator.hideRideResultsPanel(clearData)
+    }
+
+    private fun expandRidePanel() {
+        ridePanelCoordinator.expandRidePanel()
+    }
+
+    private fun collapseRidePanel() {
+        ridePanelCoordinator.collapseRidePanel()
+    }
+
+    private fun addMeetupLocationMarkers(rides: List<RideListItem>) {
+        meetupMarkerController?.addMeetupLocationMarkers(rides)
+    }
+
+    private fun clearMeetupLocationMarkers() {
+        meetupMarkerController?.clearMeetupLocationMarkers()
+    }
+
+    private fun setUpImeSpacing() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val navigationInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            val extraGapPx = 150
+            val bottomMargin = imeInsets.bottom + extraGapPx
+
+            val params = binding.predictionsCard.layoutParams as? ConstraintLayout.LayoutParams
+            if (params != null && params.bottomMargin != bottomMargin) {
+                params.bottomMargin = bottomMargin
+                binding.predictionsCard.layoutParams = params
+            }
+
+            if (binding.bottomNav.paddingBottom != navigationInsets.bottom) {
+                binding.bottomNav.setPadding(
+                    binding.bottomNav.paddingLeft,
+                    binding.bottomNav.paddingTop,
+                    binding.bottomNav.paddingRight,
+                    navigationInsets.bottom
+                )
+            }
+
+            insets
+        }
+    }
+
+    private fun handleSearchQueryChange(query: String) {
+        if (BuildConfig.USE_MOCK_DATA) {
+            return
+        }
+
+        clearSelectedMeetupMarker()
+
+        if (!searchUiCoordinator.isSearchBarAtTop()) {
+            moveSearchBarToTop()
+        }
+
+        // Hide ride results while typing a new query.
+        hideRideResultsPanel(clearData = true)
+        binding.createRideButton.visibility = View.GONE
+
+        pendingSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+        pendingSearchRunnable = Runnable { fetchAutocompletePredictions(query) }
+        searchDebounceHandler.postDelayed(pendingSearchRunnable!!, 300)
+    }
+
+    private fun setUpClickListener() {
+        // Map touch overlay - tapping empty map area restores default UI
+        binding.mapTouchOverlay.setOnClickListener {
+            restoreDefaultMapUiIfNeeded()
+        }
+
+        setUpBottomNavCompose()
+        setUpCreateRideButtonCompose()
+    }
+
+    private fun setUpCreateRideButtonCompose() {
+        binding.createRideButton.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.createRideButton.setContent {
+            val isJoinRideMode = selectedRide != null
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 5.dp),
+                contentAlignment = if (isJoinRideMode) Alignment.BottomCenter else Alignment.BottomEnd
+            ) {
+                hopOnButton(
+                    text = if (isJoinRideMode) "Join Ride" else "Create ride",
+                    onClick = if (isJoinRideMode) ::handleJoinRideClick else ::handleCreateRideClick,
+                    modifier = if (isJoinRideMode) {
+                        Modifier.fillMaxWidth(0.8f)
+                    } else {
+                        Modifier.padding(end = 15.dp)
+                    }
+                )
+            }
+        }
+    }
+
+    private fun setUpBottomNavCompose() {
+        binding.bottomNav.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.bottomNav.setContent {
+            mapsBottomNavigation(
+                selectedItem = selectedBottomNavItem,
+                onItemSelected = ::handleBottomNavSelection
+            )
+        }
+    }
+
+    private fun handleBottomNavSelection(item: MapsBottomNavItem) {
+        selectedBottomNavItem = item
+        when (mapBottomNavItemToAction(item)) {
+            MapsBottomNavAction.NoOp -> Unit
+            MapsBottomNavAction.ShowRides -> {
+                showMapContent()
+            }
+            MapsBottomNavAction.ShowHistory -> {
+                showHistoryContent()
+            }
+            MapsBottomNavAction.ShowProfile -> {
+                showProfileContent()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        selectedBottomNavItem = when {
+            isHistoryVisible -> MapsBottomNavItem.RIDES
+            isProfileVisible -> MapsBottomNavItem.PROFILE
+            else -> MapsBottomNavItem.HOME
+        }
+    }
+
+    private fun showHistoryContent() {
+        animateMainContentTransition()
+        isHistoryVisible = true
+        isProfileVisible = false
+        isRideInProcessVisible = false
+        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
+            context = this,
+            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
+        )
+        binding.historyContent.visibility = View.VISIBLE
+        binding.profileContent.visibility = View.GONE
+        binding.rideInProcessContent.visibility = View.GONE
+        binding.searchBarContainer.visibility = View.GONE
+        binding.predictionsCard.visibility = View.GONE
+        binding.ridesBottomSheetCard.visibility = View.GONE
+        binding.mapTouchOverlay.visibility = View.GONE
+        binding.createRideButton.visibility = View.GONE
+        clearRideDetailSelection()
+        clearMeetupLocationMarkers()
+    }
+
+    private fun showMapContent() {
+        animateMainContentTransition()
+        isHistoryVisible = false
+        isProfileVisible = false
+        isRideInProcessVisible = false
+        binding.historyContent.visibility = View.GONE
+        binding.profileContent.visibility = View.GONE
+        binding.rideInProcessContent.visibility = View.GONE
+        binding.searchBarContainer.visibility = View.VISIBLE
+        binding.predictionsCard.visibility = View.GONE
+        if (isRidePanelVisible) {
+            binding.ridesBottomSheetCard.visibility = View.VISIBLE
+        }
+        binding.createRideButton.visibility = if (selectedRide != null) View.VISIBLE else View.GONE
+    }
+
+    private fun showProfileContent() {
+        animateMainContentTransition()
+        isHistoryVisible = false
+        isProfileVisible = true
+        isRideInProcessVisible = false
+        binding.historyContent.visibility = View.GONE
+        binding.profileContent.visibility = View.VISIBLE
+        binding.rideInProcessContent.visibility = View.GONE
+        binding.searchBarContainer.visibility = View.GONE
+        binding.predictionsCard.visibility = View.GONE
+        binding.ridesBottomSheetCard.visibility = View.GONE
+        binding.mapTouchOverlay.visibility = View.GONE
+        binding.createRideButton.visibility = View.GONE
+        clearRideDetailSelection()
+        clearMeetupLocationMarkers()
+    }
+
+    private fun showRideInProcessContent() {
+        animateMainContentTransition()
+        isHistoryVisible = false
+        isProfileVisible = false
+        isRideInProcessVisible = true
+        binding.historyContent.visibility = View.GONE
+        binding.profileContent.visibility = View.GONE
+        binding.rideInProcessContent.visibility = View.VISIBLE
+        binding.searchBarContainer.visibility = View.GONE
+        binding.predictionsCard.visibility = View.GONE
+        binding.ridesBottomSheetCard.visibility = View.GONE
+        binding.mapTouchOverlay.visibility = View.GONE
+        binding.createRideButton.visibility = View.GONE
+        clearRideDetailSelection()
+        clearMeetupLocationMarkers()
+    }
+
+    private fun animateMainContentTransition() {
+        val transition = AutoTransition().apply {
+            duration = 180
+        }
+        TransitionManager.beginDelayedTransition(binding.root as ConstraintLayout, transition)
+    }
+
+    private fun handleCreateRideClick() {
+        Toast.makeText(this, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun handleJoinRideClick() {
+        selectedRide?.let {
+            showRideInProcessContent()
+        }
+    }
+
+    private fun logoutAndNavigateToLogin() {
+        // Clear login state and reset task stack to auth screen.
+        SessionManager.setLoggedIn(this, false)
+        startActivity(Intent(this, LoginActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        })
+        finish()
+    }
+
+    private fun activateInlineSearchMode() {
+        searchUiCoordinator.activateInlineSearchMode(
+            clearSelectedMeetupMarker = ::clearSelectedMeetupMarker,
+            hideRideResultsPanel = ::hideRideResultsPanel,
+            hideCreateRideButton = { binding.createRideButton.visibility = View.GONE },
+            requestSearchFocus = { shouldRequestSearchFocus = true },
+            showPredictionsCard = { binding.predictionsCard.visibility = View.VISIBLE }
+        )
+    }
+
+    private fun clearSearchFocus() {
+        clearSearchFocusSignal = searchUiCoordinator.clearSearchFocus(
+            clearSearchFocusRequest = { shouldRequestSearchFocus = false },
+            clearFocusSignal = clearSearchFocusSignal
+        )
+    }
+
+    private fun handleSearchAction() {
+        if (BuildConfig.USE_MOCK_DATA) {
+            applyPlaceholderPlaceSelection()
+            return
+        }
+
+        val query = searchQuery.trim()
+        if (query.isEmpty()) {
+            return
+        }
+
+        pendingSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+        pendingSearchRunnable = null
+
+        val matchingPrediction = latestPredictions.firstOrNull { prediction ->
+            val fullText = prediction.getFullText(null).toString().trim()
+            val primaryText = prediction.getPrimaryText(null).toString().trim()
+            fullText.equals(query, ignoreCase = true) ||
+                primaryText.equals(query, ignoreCase = true)
+        } ?: latestPredictions.firstOrNull()
+
+        if (matchingPrediction != null) {
+            fetchPlaceDetailsAndApplySelection(matchingPrediction)
+            return
+        }
+
+        val dataSource = placesSearchDataSource ?: return
+        val submittedQuery = query
+        val requestToken = ++latestRequestToken
+        dataSource.findPredictions(
+            query = submittedQuery,
+            onSuccess = { predictions ->
+                val currentQuery = searchQuery.trim()
+                if (requestToken != latestRequestToken ||
+                    !currentQuery.equals(submittedQuery, ignoreCase = true)
+                ) {
+                    return@findPredictions
+                }
+
+                latestPredictions = predictions
+                if (latestPredictions.isNotEmpty()) {
+                    fetchPlaceDetailsAndApplySelection(latestPredictions[0])
+                } else {
+                    showEmptyPredictions = currentQuery.length >= 2
+                    binding.predictionsCard.visibility = View.VISIBLE
+                }
+            },
+            onFailure = {
+                Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun fetchAutocompletePredictions(query: String) {
+        val dataSource = placesSearchDataSource ?: return
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.length < 2) {
+            latestPredictions = emptyList()
+            showEmptyPredictions = false
+            return
+        }
+
+        val requestToken = ++latestRequestToken
+
+        dataSource.findPredictions(
+            query = trimmedQuery,
+            onSuccess = { predictions ->
+                val currentQuery = searchQuery.trim()
+                if (requestToken != latestRequestToken || currentQuery != trimmedQuery) {
+                    return@findPredictions
+                }
+                latestPredictions = predictions
+                showEmptyPredictions = currentQuery.length >= 2 && latestPredictions.isEmpty()
+                binding.predictionsCard.visibility = View.VISIBLE
+            },
+            onFailure = {
+                latestPredictions = emptyList()
+                showEmptyPredictions = false
+            }
+        )
+    }
+
+    private fun fetchPlaceDetailsAndApplySelection(prediction: AutocompletePrediction) {
+        val dataSource = placesSearchDataSource ?: return
+        dataSource.fetchPlaceDetails(
+            prediction = prediction,
+            onSuccess = { name, latLng ->
+                applySelectedPlace(name, latLng)
+                binding.predictionsCard.visibility = View.GONE
+                clearSearchFocus()
+            },
+            onFailure = {
+                Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun applyPlaceholderPlaceSelection() {
+        val place = MockData.placeholderPlaces[placeholderPlaceIndex % MockData.placeholderPlaces.size]
+        placeholderPlaceIndex++
+
+        applySelectedPlace(place.name, place.latLng)
+    }
+
+    private fun applySelectedPlace(name: String, latLng: LatLng) {
+        // Update selected destination in UI and map state.
+        dropLatLng = latLng
+        searchQuery = name
+        shouldRequestSearchFocus = false
+        moveSearchBarToTop()
+        showRideResultsPanel()
+        binding.createRideButton.visibility = View.VISIBLE
+        val rideItems = showFilteredRides(name, latLng)
+
+        if (!isMapReady) {
+            Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        destinationMarker?.remove()
+        destinationMarker = addOriginDestinationMarkerAndGet(latLng)
+        destinationMarker?.setAnchor(0.5f, 0.5f)
+        val nearestMeetupLatLng = rideItems.firstOrNull()?.meetupLatLng ?: latLng
+        animateCamera(nearestMeetupLatLng)
+    }
+
+    private fun showFilteredRides(destinationName: String, destinationLatLng: LatLng): List<RideListItem> {
+        val normalizedDestination = destinationName.trim().lowercase(Locale.ROOT)
+        val rideItems = MockData.mockRides
+            .filter { ride ->
+                val rideDestination = ride.destinationLabel.lowercase(Locale.ROOT)
+                rideDestination == normalizedDestination ||
+                    normalizedDestination.contains(rideDestination) ||
+                    rideDestination.contains(normalizedDestination) ||
+                    calculateDistanceMeters(ride.destinationLatLng, destinationLatLng) <= 400f
+            }
+            .map { ride ->
+                RideListItem(
+                    meetupLabel = ride.meetupLabel,
+                    meetupLatLng = ride.meetupLatLng,
+                    destinationLabel = ride.destinationLabel,
+                    destinationLatLng = ride.destinationLatLng,
+                    pickupDistanceMeters = calculatePickupDistanceMeters(ride.meetupLatLng),
+                    meetupDateTimeLabel = ride.meetupDateTimeLabel,
+                    waitTimeMinutes = ride.waitTimeMinutes,
+                    hostName = ride.host.name,
+                    hostRating = ride.host.rating,
+                    hostVehicleType = ride.host.vehicleType,
+                    peopleCount = ride.peopleCount,
+                    maxPeopleCount = ride.maxPeopleCount
+                )
+            }
+            .sortedBy { it.pickupDistanceMeters }
+
+        ridePanelItems = rideItems
+        allRidePanelItems = rideItems
+        addMeetupLocationMarkers(rideItems)
+        return rideItems
+    }
+
+    private fun calculatePickupDistanceMeters(meetupLatLng: LatLng): Float {
+        val userLatLng = currentLatLng ?: pickUpLatLng ?: meetupLatLng
+        return calculateDistanceMeters(userLatLng, meetupLatLng)
+    }
+
+    private fun calculateDistanceMeters(start: LatLng, end: LatLng): Float {
+        val result = FloatArray(1)
+        Location.distanceBetween(
+            start.latitude,
+            start.longitude,
+            end.latitude,
+            end.longitude,
+            result
+        )
+        return result[0]
+    }
+
+    private fun moveCamera(latLng: LatLng) {
+        googleMap.moveCamera(CameraUpdateFactory.newLatLng(latLng))
+    }
+
+    private fun animateCamera(latLng: LatLng) {
+        val cameraPosition = CameraPosition.Builder().target(latLng).zoom(15.5f).build()
+        googleMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition))
+    }
+
+    private fun addCarMarkerAndGet(latLng: LatLng): Marker? {
+        val bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(MapUtils.getCarBitmap(this))
+        return googleMap.addMarker(
+            MarkerOptions().position(latLng).flat(true).icon(bitmapDescriptor)
+        )
+    }
+
+    private fun addOriginDestinationMarkerAndGet(latLng: LatLng): Marker? {
+        val bitmapDescriptor = BitmapDescriptorFactory.fromBitmap(
+            MapUtils.getLocationIconBitmap(
+                this,
+                R.drawable.ic_target,
+                R.color.colorAccent,
+                sizePx = 72
+            )
+        )
+        return googleMap.addMarker(
+            MarkerOptions().position(latLng).flat(true).icon(bitmapDescriptor)
+        )
+    }
+
+    private fun setCurrentLocationAsPickUp() {
+        // Pickup defaults to user's current location.
+        pickUpLatLng = currentLatLng
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun enableMyLocationOnMap() {
+        googleMap.setPadding(0, ViewUtils.dpToPx(48f), 0, ViewUtils.dpToPx(124f))
+        googleMap.isMyLocationEnabled = true
+    }
+
+    private fun setUpLocationListener() {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            2000L
+        ).setMinUpdateIntervalMillis(2000L)
+            .build()
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                super.onLocationResult(locationResult)
+
+                // Skip location updates in mock mode (use pre-set mock location instead).
+                if (BuildConfig.USE_MOCK_DATA) {
+                    return
+                }
+
+                // In live mode, allow real location to override the default Assumption University.
+                // Lock after first non-default location is obtained.
+                if (currentLatLng != mockCurrentLocation && currentLatLng != null) {
+                    return
+                }
+
+                for (location in locationResult.locations) {
+                    if (currentLatLng == mockCurrentLocation || currentLatLng == null) {
+                        currentLatLng = LatLng(location.latitude, location.longitude)
+                        setCurrentLocationAsPickUp()
+                        enableMyLocationOnMap()
+                        moveCamera(currentLatLng!!)
+                        animateCamera(currentLatLng!!)
+                    }
+                }
+            }
+        }
+
+        fusedLocationProviderClient?.requestLocationUpdates(
+            locationRequest,
+            locationCallback,
+            Looper.getMainLooper()
+        )
+    }
+
+
+    private fun reset() {
+        // Restore map and UI to pre-booking default state.
+        binding.createRideButton.visibility = View.GONE
+        hideRideResultsPanel(clearData = true)
+        searchQuery = ""
+        clearSearchFocus()
+        moveSearchBarToBottom()
+
+        previousLatLngFromServer = null
+        currentLatLngFromServer = null
+
+        if (currentLatLng != null) {
+            moveCamera(currentLatLng!!)
+            animateCamera(currentLatLng!!)
+            setCurrentLocationAsPickUp()
+        }
+
+        movingCabMarker?.remove()
+        greyPolyLine?.remove()
+        blackPolyline?.remove()
+        originMarker?.remove()
+        destinationMarker?.remove()
+
+        dropLatLng = null
+        greyPolyLine = null
+        blackPolyline = null
+        originMarker = null
+        destinationMarker = null
+        movingCabMarker = null
+    }
+
+    override fun onStart() {
+        super.onStart()
+
+        // Request permission/GPS if needed, then start location updates.
+        // In mock mode, location is already set; in live mode, initialize from provider.
+        if (!BuildConfig.USE_MOCK_DATA) {
+            when {
+                PermissionUtils.isAccessFineLocationGranted(this) -> {
+                    when {
+                        PermissionUtils.isLocationEnabled(this) -> {
+                            setUpLocationListener()
+                        }
+                        else -> {
+                            PermissionUtils.showGPSNotEnabledDialog(this)
+                        }
+                    }
+                }
+                else -> {
+                    PermissionUtils.requestAccessFineLocationPermission(
+                        this,
+                        LOCATION_PERMISSION_REQUEST_CODE
+                    )
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        presenter?.onDetach()
+        if (::locationCallback.isInitialized) {
+            fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
+        }
+        super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            LOCATION_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    when {
+                        PermissionUtils.isLocationEnabled(this) -> {
+                            setUpLocationListener()
+                        }
+                        else -> {
+                            PermissionUtils.showGPSNotEnabledDialog(this)
+                        }
+                    }
+                } else {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.location_permission_not_granted),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun moveSearchBarToTop() {
+        searchUiCoordinator.moveSearchBarToTop()
+    }
+
+    private fun moveSearchBarToBottom() {
+        searchUiCoordinator.moveSearchBarToBottom()
+    }
+
+    override fun onMapReady(googleMap: GoogleMap) {
+        this.googleMap = googleMap
+        isMapReady = true
+        meetupMarkerController = MeetupMarkerController(
+            context = this,
+            googleMap = this.googleMap,
+            normalPinSizePx = meetupPinSizePx,
+            selectedPinSizePx = meetupPinSelectedSizePx
+        )
+
+        val mapStyleApplied = this.googleMap.setMapStyle(
+            MapStyleOptions.loadRawResourceStyle(this, R.raw.map_style_minimal)
+        )
+        if (!mapStyleApplied) {
+            Log.e(TAG, "Failed to apply minimal map style")
+        }
+
+        // Tapping empty map area collapses ride result panel if visible, otherwise restores default UI.
+        this.googleMap.setOnMapClickListener {
+            mapUiStateCoordinator.handleMapTap(
+                onBeforeDismiss = {
+                    clearSelectedMeetupMarker()
+                    clearSearchFocus()
+                }
+            )
+        }
+        this.googleMap.setOnMarkerClickListener { marker ->
+            val ride = marker.tag as? RideListItem ?: return@setOnMarkerClickListener false
+            selectMeetupMarker(marker, ride)
+            true
+        }
+    }
+
+    private fun selectMeetupMarker(marker: Marker, ride: RideListItem) {
+        if (selectedRide != null) {
+            selectRideForDetail(ride)
+            return
+        }
+        meetupMarkerController?.setSelectedMarker(marker)
+        ridePanelItems = listOf(ride)
+        showRideResultsPanel()
+    }
+
+    private fun clearSelectedMeetupMarker() {
+        meetupMarkerController?.clearSelectedMarker()
+        if (allRidePanelItems.isNotEmpty()) {
+            ridePanelItems = allRidePanelItems
+        }
+    }
+
+
+    override fun informCabBooked() {
+        Toast.makeText(this, getString(R.string.your_cab_is_booked), Toast.LENGTH_SHORT).show()
+    }
+
+    override fun showPath(latLngList: List<LatLng>) {
+        // Fit camera and draw route polylines from server path points.
+        val builder = LatLngBounds.Builder()
+        for (latLng in latLngList) {
+            builder.include(latLng)
+        }
+        val bounds = builder.build()
+        googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 2))
+
+        val polylineOptions = PolylineOptions()
+        polylineOptions.color(Color.GRAY)
+        polylineOptions.width(5f)
+        polylineOptions.addAll(latLngList)
+        greyPolyLine = googleMap.addPolyline(polylineOptions)
+
+        val blackPolylineOptions = PolylineOptions()
+        blackPolylineOptions.width(5f)
+        blackPolylineOptions.color(Color.BLACK)
+        blackPolyline = googleMap.addPolyline(blackPolylineOptions)
+
+        originMarker = addOriginDestinationMarkerAndGet(latLngList[0])
+        originMarker?.setAnchor(0.5f, 0.5f)
+        destinationMarker = addOriginDestinationMarkerAndGet(latLngList[latLngList.size - 1])
+        destinationMarker?.setAnchor(0.5f, 0.5f)
+
+        // Animate black overlay on top of gray route for progress effect.
+        val polylineAnimator = AnimationUtils.polyLineAnimator()
+        polylineAnimator.addUpdateListener { valueAnimator ->
+            val percentValue = (valueAnimator.animatedValue as Int)
+            val index = (greyPolyLine?.points!!.size * (percentValue / 100.0f)).toInt()
+            blackPolyline?.points = greyPolyLine?.points!!.subList(0, index)
+        }
+        polylineAnimator.start()
+    }
+
+    override fun updateCabLocation(latLng: LatLng) {
+        // Animate vehicle marker from previous server location to latest location.
+        if (movingCabMarker == null) {
+            movingCabMarker = addCarMarkerAndGet(latLng)
+        }
+        if (previousLatLngFromServer == null) {
+            currentLatLngFromServer = latLng
+            previousLatLngFromServer = currentLatLngFromServer
+            movingCabMarker?.position = currentLatLngFromServer!!
+            movingCabMarker?.setAnchor(0.5f, 0.5f)
+            animateCamera(currentLatLngFromServer!!)
+        } else {
+            previousLatLngFromServer = currentLatLngFromServer
+            currentLatLngFromServer = latLng
+            val valueAnimator = AnimationUtils.cabAnimator()
+            valueAnimator.addUpdateListener { va ->
+                if (currentLatLngFromServer != null && previousLatLngFromServer != null) {
+                    val multiplier = va.animatedFraction
+                    val nextLocation = LatLng(
+                        multiplier * currentLatLngFromServer!!.latitude + (1 - multiplier) * previousLatLngFromServer!!.latitude,
+                        multiplier * currentLatLngFromServer!!.longitude + (1 - multiplier) * previousLatLngFromServer!!.longitude
+                    )
+                    movingCabMarker?.position = nextLocation
+                    movingCabMarker?.setAnchor(0.5f, 0.5f)
+                    val rotation = MapUtils.getRotation(previousLatLngFromServer!!, nextLocation)
+                    if (!rotation.isNaN()) {
+                        movingCabMarker?.rotation = rotation
+                    }
+                    animateCamera(nextLocation)
+                }
+            }
+            valueAnimator.start()
+        }
+    }
+
+    override fun informCabIsArriving() {
+        Toast.makeText(this, getString(R.string.your_cab_is_arriving), Toast.LENGTH_SHORT).show()
+    }
+
+    override fun informCabArrived() {
+        Toast.makeText(this, getString(R.string.your_cab_has_arrived), Toast.LENGTH_SHORT).show()
+    }
+
+    override fun informTripStart() {
+        Toast.makeText(this, getString(R.string.you_are_on_a_trip), Toast.LENGTH_SHORT).show()
+    }
+
+    override fun informTripEnd() {
+        Toast.makeText(this, getString(R.string.trip_end), Toast.LENGTH_SHORT).show()
+        reset()
+    }
+
+    override fun showRoutesNotAvailableError() {
+        Toast.makeText(
+            this,
+            getString(R.string.route_not_available_choose_different_locations),
+            Toast.LENGTH_LONG
+        ).show()
+        reset()
+    }
+
+    override fun showDirectionApiFailedError(error: String) {
+        Toast.makeText(this, error, Toast.LENGTH_LONG).show()
+        reset()
+    }
+}

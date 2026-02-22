@@ -35,18 +35,13 @@
         </activity>
 
         <activity
-            android:name=".ui.maps.MapsActivity"
+            android:name=".ui.rideDiscovery.screen.RootHostActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustNothing"
             android:theme="@style/MapsTheme" />
 
         <activity
             android:name=".ui.rides.RideDetailActivity"
-            android:exported="false"
-            android:theme="@style/AppTheme" />
-
-        <activity
-            android:name=".ui.rides.RideInProcessActivity"
             android:exported="false"
             android:theme="@style/AppTheme" />
 
