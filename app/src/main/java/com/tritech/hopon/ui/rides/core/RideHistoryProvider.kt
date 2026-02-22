@@ -6,6 +6,7 @@ import com.tritech.hopon.R
 import com.tritech.hopon.ui.rideDiscovery.core.MockData
 import com.tritech.hopon.ui.rideDiscovery.core.MockRide
 import com.tritech.hopon.ui.rideDiscovery.core.MockRideRepository
+import com.tritech.hopon.ui.rideDiscovery.core.RideLifecycleStatus
 import com.tritech.hopon.ui.rideDiscovery.core.RideParticipationRole
 import com.tritech.hopon.ui.rideDiscovery.core.RideListItem
 import com.tritech.hopon.utils.SessionManager
@@ -26,13 +27,21 @@ object RideHistoryProvider {
 
         return MockData.mockRides
             .filter { ride ->
-                ride.isCompleted && rideHistoryKey(ride) in relatedRideKeys
+                rideHistoryKey(ride) in relatedRideKeys
             }
-            .sortedByDescending { ride ->
-                parseMeetupDateTimeToEpochMillis(ride.meetupDateTimeLabel)
-            }
+            .sortedWith(compareByDescending<MockRide> { !it.isCompleted }
+                .thenByDescending { ride ->
+                    parseMeetupDateTimeToEpochMillis(ride.meetupDateTimeLabel)
+                }
+                .thenByDescending { it.rideTimeMinutes ?: 0 }
+            )
             .map { ride ->
                 val isHostedByCurrentUser = ride.host.id == currentUserId
+                val lifecycleStatus = when {
+                    ride.isCompleted -> RideLifecycleStatus.COMPLETED
+                    MockData.isRideOngoingForUser(currentUserId, ride) -> RideLifecycleStatus.ONGOING
+                    else -> RideLifecycleStatus.UPCOMING
+                }
                 RideListItem(
                     meetupLabel = ride.meetupLabel,
                     meetupLatLng = ride.meetupLatLng,
@@ -52,7 +61,8 @@ object RideHistoryProvider {
                         RideParticipationRole.JOINED
                     },
                     isCompleted = ride.isCompleted,
-                    rideTimeMinutes = ride.rideTimeMinutes
+                    rideTimeMinutes = ride.rideTimeMinutes,
+                    lifecycleStatus = lifecycleStatus
                 )
             }
     }
@@ -100,8 +110,8 @@ object RideHistoryProvider {
         val parserWithYear = SimpleDateFormat("MMM dd yyyy", Locale.US)
         val parserWithExplicitYear = SimpleDateFormat("MMM dd, yyyy", Locale.US)
 
-        val parsedDate = parserWithExplicitYear.parse(datePart)
-            ?: parserWithYear.parse("$datePart $year")
+        val parsedDate = runCatching { parserWithExplicitYear.parse(datePart) }.getOrNull()
+            ?: runCatching { parserWithYear.parse("$datePart $year") }.getOrNull()
             ?: return null
 
         return Calendar.getInstance().apply {

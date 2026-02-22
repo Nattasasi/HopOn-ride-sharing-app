@@ -59,6 +59,7 @@ import com.tritech.hopon.ui.rideDiscovery.core.SearchUiCoordinator
 import com.tritech.hopon.ui.rideDiscovery.core.MeetupMarkerController
 import com.tritech.hopon.ui.rideDiscovery.core.PlacesSearchDataSource
 import com.tritech.hopon.ui.rideDiscovery.core.RoutesApiClient
+import com.tritech.hopon.ui.rideDiscovery.core.CreateRideSubmission
 import com.tritech.hopon.ui.rideDiscovery.core.MockData
 import com.tritech.hopon.ui.rideDiscovery.core.RideListItem
 import com.tritech.hopon.ui.rideDiscovery.core.MapsPresenter
@@ -72,6 +73,11 @@ import com.tritech.hopon.utils.ViewUtils
 import java.util.Locale
 
 class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
+
+    private enum class CreateRideLocationField {
+        MEETUP,
+        DESTINATION
+    }
 
     companion object {
         private const val TAG = "RootHostActivity"
@@ -124,6 +130,22 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var isRideDetailVisible by mutableStateOf(false)
     private var isProfileVisible by mutableStateOf(false)
     private var isRideInProcessVisible by mutableStateOf(false)
+    private var isCreateRideVisible by mutableStateOf(false)
+    private var createRideDestination by mutableStateOf("")
+    private var createRideDestinationLatLng: LatLng? = null
+    private var createRideInitialMeetupLocation by mutableStateOf("")
+    private var createRideInitialMeetupLatLng: LatLng? = null
+    private var createRideInitialDestination by mutableStateOf("")
+    private var createRideInitialDestinationLatLng: LatLng? = null
+    private var createRideMeetupLocation by mutableStateOf("")
+    private var createRideMeetupLatLng: LatLng? = null
+    private var createRideDestinationInput by mutableStateOf("")
+    private var createRideDestinationInputLatLng: LatLng? = null
+    private var createRidePredictions by mutableStateOf<List<AutocompletePrediction>>(emptyList())
+    private var showCreateRideEmptyPredictions by mutableStateOf(false)
+    private var activeCreateRideField: CreateRideLocationField? = null
+    private var pendingCreateRideSearchRunnable: Runnable? = null
+    private var createRideRequestToken = 0L
     private var historyRideItems by mutableStateOf<List<RideListItem>>(emptyList())
     private var selectedHistoryRide by mutableStateOf<RideListItem?>(null)
     private var rideRoutePolyline: Polyline? = null
@@ -150,7 +172,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ridesBottomSheetCard = binding.ridesBottomSheetCard,
             mapTouchOverlay = binding.mapTouchOverlay,
             clearMeetupLocationMarkers = ::clearMeetupLocationMarkers,
-            clearRideDetailSelection = ::clearRideDetailSelection,
+            clearRideDetailSelection = { clearRideDetailSelection() },
             setRidePanelVisible = { isRidePanelVisible = it },
             setRidePanelExpanded = { isRidePanelExpanded = it },
             setRidePanelItems = { ridePanelItems = it },
@@ -158,7 +180,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         )
         mapUiStateCoordinator = MapUiStateCoordinator(
             hasSelectedRide = { selectedRide != null },
-            clearRideDetailSelection = ::clearRideDetailSelection,
+            clearRideDetailSelection = {
+                clearRideDetailSelection(restoreCreateRideButton = true)
+            },
             isRidePanelVisible = { isRidePanelVisible },
             isRidePanelExpanded = { isRidePanelExpanded },
             collapseRidePanel = ::collapseRidePanel,
@@ -186,6 +210,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         setUpRideDetailCompose()
         setUpProfileCompose()
         setUpRideInProcessCompose()
+        setUpCreateRideCompose()
         setUpPredictionsCompose()
         setUpSearchBarCompose()
         setUpBackPressHandler()
@@ -215,7 +240,12 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         mapUiStateCoordinator.setUpBackPressHandler(this) {
             if (isRideDetailVisible) {
                 showHistoryContent()
-            } else if (isHistoryVisible || isProfileVisible || isRideInProcessVisible) {
+            } else if (
+                isHistoryVisible ||
+                isProfileVisible ||
+                isRideInProcessVisible ||
+                isCreateRideVisible
+            ) {
                 selectedBottomNavItem = MapsBottomNavItem.HOME
                 showMapContent()
             } else {
@@ -325,6 +355,39 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         }
     }
 
+    private fun setUpCreateRideCompose() {
+        binding.createRideContent.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.createRideContent.setContent {
+            createRideScreen(
+                initialMeetupLocation = createRideInitialMeetupLocation,
+                initialMeetupLatLng = createRideInitialMeetupLatLng,
+                initialDestination = createRideInitialDestination,
+                initialDestinationLatLng = createRideInitialDestinationLatLng,
+                meetupLocation = createRideMeetupLocation,
+                meetupLatLng = createRideMeetupLatLng,
+                destination = createRideDestinationInput,
+                destinationLatLng = createRideDestinationInputLatLng,
+                locationPredictions = createRidePredictions,
+                showLocationPredictions = activeCreateRideField != null &&
+                    (createRidePredictions.isNotEmpty() || showCreateRideEmptyPredictions),
+                onMeetupLocationChange = { query -> handleCreateRideQueryChange(CreateRideLocationField.MEETUP, query) },
+                onDestinationChange = { query -> handleCreateRideQueryChange(CreateRideLocationField.DESTINATION, query) },
+                onMeetupFocusChanged = { hasFocus -> handleCreateRideFocusChanged(CreateRideLocationField.MEETUP, hasFocus) },
+                onDestinationFocusChanged = { hasFocus -> handleCreateRideFocusChanged(CreateRideLocationField.DESTINATION, hasFocus) },
+                onMeetupSearchAction = { handleCreateRideSearchAction(CreateRideLocationField.MEETUP) },
+                onDestinationSearchAction = { handleCreateRideSearchAction(CreateRideLocationField.DESTINATION) },
+                onMeetupClearClick = { clearCreateRideField(CreateRideLocationField.MEETUP) },
+                onDestinationClearClick = { clearCreateRideField(CreateRideLocationField.DESTINATION) },
+                onPredictionClick = ::fetchCreateRidePlaceDetailsAndApplySelection,
+                onDismissLocationOverlay = ::dismissCreateRideEditingUi,
+                onBackClick = ::showMapContent,
+                onCreateRideClick = ::handleCreateRideSubmit
+            )
+        }
+    }
+
     private fun setUpSearchBarCompose() {
         binding.searchBarContainer.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
@@ -380,7 +443,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.createRideButton.visibility = View.VISIBLE
     }
 
-    private fun clearRideDetailSelection() {
+    private fun clearRideDetailSelection(restoreCreateRideButton: Boolean = false) {
         selectedRide = null
         rideRoutePolyline?.remove()
         rideRoutePolyline = null
@@ -389,9 +452,24 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         
         // Clear marker selection
         clearSelectedMeetupMarker()
-        
-        // Hide "Join Ride" button
-        binding.createRideButton.visibility = View.GONE
+
+        binding.createRideButton.visibility = if (
+            restoreCreateRideButton && shouldShowPrimaryActionButton()
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+    }
+
+    private fun shouldShowPrimaryActionButton(): Boolean {
+        if (!isRidePanelVisible) {
+            return false
+        }
+        if (selectedRide != null) {
+            return true
+        }
+        return dropLatLng != null || searchQuery.isNotBlank() || allRidePanelItems.isNotEmpty()
     }
 
     private fun requestRideRoute(meetupLatLng: LatLng, destinationLatLng: LatLng) {
@@ -621,6 +699,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = false
+        isCreateRideVisible = false
         historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
             context = this,
             pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
@@ -629,6 +708,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.createRideContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -644,16 +724,22 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = false
+        isCreateRideVisible = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.createRideContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.VISIBLE
         binding.predictionsCard.visibility = View.GONE
         if (isRidePanelVisible) {
             binding.ridesBottomSheetCard.visibility = View.VISIBLE
         }
-        binding.createRideButton.visibility = if (selectedRide != null) View.VISIBLE else View.GONE
+        binding.createRideButton.visibility = if (shouldShowPrimaryActionButton()) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
     }
 
     private fun showProfileContent() {
@@ -662,10 +748,12 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = true
         isRideInProcessVisible = false
+        isCreateRideVisible = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.VISIBLE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.createRideContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -682,10 +770,12 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = true
         isProfileVisible = false
         isRideInProcessVisible = false
+        isCreateRideVisible = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.VISIBLE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.createRideContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -701,10 +791,12 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = true
+        isCreateRideVisible = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.VISIBLE
+        binding.createRideContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -715,6 +807,29 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         selectedHistoryRide = null
     }
 
+    private fun showCreateRideContent() {
+        animateMainContentTransition()
+        isHistoryVisible = false
+        isRideDetailVisible = false
+        isProfileVisible = false
+        isRideInProcessVisible = false
+        isCreateRideVisible = true
+        binding.historyContent.visibility = View.GONE
+        binding.rideDetailContent.visibility = View.GONE
+        binding.profileContent.visibility = View.GONE
+        binding.rideInProcessContent.visibility = View.GONE
+        binding.createRideContent.visibility = View.VISIBLE
+        binding.searchBarContainer.visibility = View.GONE
+        binding.predictionsCard.visibility = View.GONE
+        binding.ridesBottomSheetCard.visibility = View.GONE
+        binding.mapTouchOverlay.visibility = View.GONE
+        binding.createRideButton.visibility = View.GONE
+        clearRideDetailSelection()
+        clearMeetupLocationMarkers()
+        selectedHistoryRide = null
+        clearCreateRidePredictions()
+    }
+
     private fun animateMainContentTransition() {
         val transition = AutoTransition().apply {
             duration = 180
@@ -723,11 +838,263 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun handleCreateRideClick() {
+        createRideDestination = searchQuery.trim().ifEmpty { getString(R.string.selected_place) }
+        createRideDestinationLatLng = dropLatLng
+        createRideInitialMeetupLocation = getString(R.string.current_location)
+        createRideInitialMeetupLatLng = currentLatLng ?: pickUpLatLng
+        createRideInitialDestination = createRideDestination
+        createRideInitialDestinationLatLng = createRideDestinationLatLng
+        createRideMeetupLocation = createRideInitialMeetupLocation
+        createRideMeetupLatLng = createRideInitialMeetupLatLng
+        createRideDestinationInput = createRideInitialDestination
+        createRideDestinationInputLatLng = createRideInitialDestinationLatLng
+        activeCreateRideField = null
+        clearCreateRidePredictions()
+        showCreateRideContent()
+    }
+
+    private fun handleCreateRideSubmit(submission: CreateRideSubmission) {
+        val currentUserId = SessionManager.getCurrentUserId(this)
+        val createdRide = MockData.addCreatedRide(submission, currentUserId)
+
+        createRideDestination = createdRide.destinationLabel
+        createRideDestinationLatLng = createdRide.destinationLatLng
+
+        showMapContent()
+        applySelectedPlace(createdRide.destinationLabel, createdRide.destinationLatLng)
         Toast.makeText(this, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun handleCreateRideFocusChanged(field: CreateRideLocationField, hasFocus: Boolean) {
+        if (!hasFocus) {
+            restoreCreateRideFieldIfBlank(field)
+            clearCreateRidePredictions()
+            if (activeCreateRideField == field) {
+                activeCreateRideField = null
+            }
+            return
+        }
+
+        activeCreateRideField = field
+        if (BuildConfig.USE_MOCK_DATA) {
+            clearCreateRidePredictions()
+            return
+        }
+
+        val query = getCreateRideQuery(field).trim()
+        if (query.length >= 2) {
+            scheduleCreateRidePredictionFetch(field, query)
+        } else {
+            clearCreateRidePredictions()
+        }
+    }
+
+    private fun restoreCreateRideFieldIfBlank(field: CreateRideLocationField) {
+        if (getCreateRideQuery(field).trim().isNotEmpty()) {
+            return
+        }
+
+        when (field) {
+            CreateRideLocationField.MEETUP -> {
+                createRideMeetupLocation = createRideInitialMeetupLocation
+                createRideMeetupLatLng = createRideInitialMeetupLatLng
+            }
+
+            CreateRideLocationField.DESTINATION -> {
+                createRideDestinationInput = createRideInitialDestination
+                createRideDestinationInputLatLng = createRideInitialDestinationLatLng
+            }
+        }
+    }
+
+    private fun handleCreateRideQueryChange(field: CreateRideLocationField, query: String) {
+        setCreateRideQuery(field, query)
+        setCreateRideLatLng(field, null)
+        activeCreateRideField = field
+
+        if (BuildConfig.USE_MOCK_DATA) {
+            clearCreateRidePredictions()
+            return
+        }
+
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.length < 2) {
+            clearCreateRidePredictions()
+            return
+        }
+
+        scheduleCreateRidePredictionFetch(field, trimmedQuery)
+    }
+
+    private fun handleCreateRideSearchAction(field: CreateRideLocationField) {
+        activeCreateRideField = field
+        if (BuildConfig.USE_MOCK_DATA) {
+            return
+        }
+
+        val query = getCreateRideQuery(field).trim()
+        if (query.isEmpty()) {
+            return
+        }
+
+        pendingCreateRideSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+        pendingCreateRideSearchRunnable = null
+
+        val matchingPrediction = createRidePredictions.firstOrNull { prediction ->
+            val fullText = prediction.getFullText(null).toString().trim()
+            val primaryText = prediction.getPrimaryText(null).toString().trim()
+            fullText.equals(query, ignoreCase = true) ||
+                primaryText.equals(query, ignoreCase = true)
+        } ?: createRidePredictions.firstOrNull()
+
+        if (matchingPrediction != null) {
+            fetchCreateRidePlaceDetailsAndApplySelection(matchingPrediction)
+            return
+        }
+
+        val dataSource = placesSearchDataSource ?: return
+        val requestToken = ++createRideRequestToken
+        dataSource.findPredictions(
+            query = query,
+            onSuccess = { predictions ->
+                if (requestToken != createRideRequestToken || activeCreateRideField != field) {
+                    return@findPredictions
+                }
+                createRidePredictions = predictions
+                if (predictions.isNotEmpty()) {
+                    fetchCreateRidePlaceDetailsAndApplySelection(predictions[0])
+                } else {
+                    showCreateRideEmptyPredictions = true
+                }
+            },
+            onFailure = {
+                Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun scheduleCreateRidePredictionFetch(field: CreateRideLocationField, query: String) {
+        pendingCreateRideSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+        pendingCreateRideSearchRunnable = Runnable {
+            fetchCreateRidePredictions(field, query)
+        }
+        searchDebounceHandler.postDelayed(pendingCreateRideSearchRunnable!!, 300)
+    }
+
+    private fun fetchCreateRidePredictions(field: CreateRideLocationField, query: String) {
+        val dataSource = placesSearchDataSource ?: return
+        val requestToken = ++createRideRequestToken
+
+        dataSource.findPredictions(
+            query = query,
+            onSuccess = { predictions ->
+                if (requestToken != createRideRequestToken) {
+                    return@findPredictions
+                }
+                val currentQuery = getCreateRideQuery(field).trim()
+                if (currentQuery != query || activeCreateRideField != field) {
+                    return@findPredictions
+                }
+                createRidePredictions = predictions
+                showCreateRideEmptyPredictions = currentQuery.length >= 2 && predictions.isEmpty()
+            },
+            onFailure = {
+                createRidePredictions = emptyList()
+                showCreateRideEmptyPredictions = false
+            }
+        )
+    }
+
+    private fun fetchCreateRidePlaceDetailsAndApplySelection(prediction: AutocompletePrediction) {
+        val selectedField = activeCreateRideField ?: return
+        val dataSource = placesSearchDataSource ?: return
+        dataSource.fetchPlaceDetails(
+            prediction = prediction,
+            onSuccess = { name, latLng ->
+                setCreateRideQuery(selectedField, name)
+                setCreateRideLatLng(selectedField, latLng)
+                clearCreateRidePredictions()
+                activeCreateRideField = null
+            },
+            onFailure = {
+                Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    private fun clearCreateRideField(field: CreateRideLocationField) {
+        setCreateRideQuery(field, "")
+        setCreateRideLatLng(field, null)
+        activeCreateRideField = field
+        clearCreateRidePredictions()
+    }
+
+    private fun setCreateRideQuery(field: CreateRideLocationField, value: String) {
+        when (field) {
+            CreateRideLocationField.MEETUP -> createRideMeetupLocation = value
+            CreateRideLocationField.DESTINATION -> createRideDestinationInput = value
+        }
+    }
+
+    private fun getCreateRideQuery(field: CreateRideLocationField): String {
+        return when (field) {
+            CreateRideLocationField.MEETUP -> createRideMeetupLocation
+            CreateRideLocationField.DESTINATION -> createRideDestinationInput
+        }
+    }
+
+    private fun setCreateRideLatLng(field: CreateRideLocationField, value: LatLng?) {
+        when (field) {
+            CreateRideLocationField.MEETUP -> createRideMeetupLatLng = value
+            CreateRideLocationField.DESTINATION -> createRideDestinationInputLatLng = value
+        }
+    }
+
+    private fun clearCreateRidePredictions() {
+        pendingCreateRideSearchRunnable?.let { searchDebounceHandler.removeCallbacks(it) }
+        pendingCreateRideSearchRunnable = null
+        createRidePredictions = emptyList()
+        showCreateRideEmptyPredictions = false
+    }
+
+    private fun dismissCreateRideEditingUi() {
+        clearCreateRidePredictions()
+        activeCreateRideField = null
     }
 
     private fun handleJoinRideClick() {
         selectedRide?.let {
+            val currentUserId = SessionManager.getCurrentUserId(this)
+            if (MockData.hasOngoingRide(currentUserId)) {
+                Toast.makeText(this, getString(R.string.one_ongoing_ride_only), Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val joinedRide = MockData.joinRide(
+                userId = currentUserId,
+                meetupLabel = it.meetupLabel,
+                destinationLabel = it.destinationLabel,
+                meetupDateTimeLabel = it.meetupDateTimeLabel,
+                hostName = it.hostName
+            )
+
+            if (joinedRide == null) {
+                Toast.makeText(this, getString(R.string.unable_to_join_ride), Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val started = MockData.startOngoingRide(
+                userId = currentUserId,
+                meetupLabel = it.meetupLabel,
+                destinationLabel = it.destinationLabel,
+                meetupDateTimeLabel = it.meetupDateTimeLabel,
+                hostName = it.hostName
+            )
+            if (!started) {
+                Toast.makeText(this, getString(R.string.unable_to_start_ride), Toast.LENGTH_SHORT).show()
+                return
+            }
+
             showRideInProcessContent()
         }
     }
@@ -1029,6 +1396,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun reset() {
         // Restore map and UI to pre-booking default state.
+        isCreateRideVisible = false
+        binding.createRideContent.visibility = View.GONE
         binding.createRideButton.visibility = View.GONE
         hideRideResultsPanel(clearData = true)
         searchQuery = ""
@@ -1056,6 +1425,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         originMarker = null
         destinationMarker = null
         movingCabMarker = null
+        clearCreateRidePredictions()
+        activeCreateRideField = null
     }
 
     override fun onStart() {
