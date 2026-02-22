@@ -15,16 +15,10 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.dp
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -59,10 +53,6 @@ import com.tritech.hopon.ui.auth.LoginActivity
 import com.tritech.hopon.ui.rideDiscovery.components.MapsBottomNavAction
 import com.tritech.hopon.ui.rideDiscovery.components.MapsBottomNavItem
 import com.tritech.hopon.ui.rideDiscovery.components.mapBottomNavItemToAction
-import com.tritech.hopon.ui.rideDiscovery.components.mapSearchBar
-import com.tritech.hopon.ui.rideDiscovery.components.mapsBottomNavigation
-import com.tritech.hopon.ui.rideDiscovery.components.placePredictionsPanel
-import com.tritech.hopon.ui.rideDiscovery.components.rideResultsBottomSheetPanel
 import com.tritech.hopon.ui.rideDiscovery.core.MapUiStateCoordinator
 import com.tritech.hopon.ui.rideDiscovery.core.RidePanelCoordinator
 import com.tritech.hopon.ui.rideDiscovery.core.SearchUiCoordinator
@@ -73,16 +63,11 @@ import com.tritech.hopon.ui.rideDiscovery.core.MockData
 import com.tritech.hopon.ui.rideDiscovery.core.RideListItem
 import com.tritech.hopon.ui.rideDiscovery.core.MapsPresenter
 import com.tritech.hopon.ui.rideDiscovery.core.MapsView
-import com.tritech.hopon.ui.rides.RideDetailActivity
-import com.tritech.hopon.ui.rides.components.historyRidesScreen
-import com.tritech.hopon.ui.rides.components.profileScreen
-import com.tritech.hopon.ui.rides.components.rideInProcessScreen
 import com.tritech.hopon.ui.rides.core.RideHistoryProvider
 import com.tritech.hopon.utils.AnimationUtils
 import com.tritech.hopon.utils.MapUtils
 import com.tritech.hopon.utils.PermissionUtils
 import com.tritech.hopon.utils.SessionManager
-import com.tritech.hopon.ui.components.hopOnButton
 import com.tritech.hopon.utils.ViewUtils
 import java.util.Locale
 
@@ -136,9 +121,11 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var selectedRide by mutableStateOf<RideListItem?>(null)
     private var selectedBottomNavItem by mutableStateOf(MapsBottomNavItem.HOME)
     private var isHistoryVisible by mutableStateOf(false)
+    private var isRideDetailVisible by mutableStateOf(false)
     private var isProfileVisible by mutableStateOf(false)
     private var isRideInProcessVisible by mutableStateOf(false)
     private var historyRideItems by mutableStateOf<List<RideListItem>>(emptyList())
+    private var selectedHistoryRide by mutableStateOf<RideListItem?>(null)
     private var rideRoutePolyline: Polyline? = null
     private var pickupRoutePolyline: Polyline? = null
     private val meetupPinSizePx = 94
@@ -196,6 +183,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         setUpImeSpacing()
         setUpRideResultsPanelCompose()
         setUpHistoryCompose()
+        setUpRideDetailCompose()
         setUpProfileCompose()
         setUpRideInProcessCompose()
         setUpPredictionsCompose()
@@ -225,7 +213,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun setUpBackPressHandler() {
         mapUiStateCoordinator.setUpBackPressHandler(this) {
-            if (isHistoryVisible || isProfileVisible || isRideInProcessVisible) {
+            if (isRideDetailVisible) {
+                showHistoryContent()
+            } else if (isHistoryVisible || isProfileVisible || isRideInProcessVisible) {
                 selectedBottomNavItem = MapsBottomNavItem.HOME
                 showMapContent()
             } else {
@@ -247,7 +237,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         binding.ridesBottomSheetCard.setContent {
-            rideResultsBottomSheetPanel(
+            mapHomeRideResultsScreen(
                 visible = isRidePanelVisible,
                 expanded = isRidePanelExpanded,
                 onExpandChange = { expanded ->
@@ -267,7 +257,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         binding.predictionsCompose.setContent {
-            placePredictionsPanel(
+            mapHomePredictionsScreen(
                 predictions = latestPredictions,
                 showEmptyState = showEmptyPredictions,
                 onPredictionClick = ::fetchPlaceDetailsAndApplySelection
@@ -282,8 +272,35 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.historyContent.setContent {
             historyRidesScreen(
                 rides = historyRideItems,
-                onRideClick = ::openRideDetail
+                onRideClick = ::showRideDetailForHistoryRide
             )
+        }
+    }
+
+    private fun setUpRideDetailCompose() {
+        binding.rideDetailContent.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.rideDetailContent.setContent {
+            val ride = selectedHistoryRide
+            if (ride != null) {
+                rideDetailScreen(
+                    onBackClick = ::showHistoryContent,
+                    meetup = ride.meetupLabel,
+                    destination = ride.destinationLabel,
+                    pickupDistanceKm = String.format(
+                        Locale.US,
+                        "%.2f",
+                        ride.pickupDistanceMeters / 1000f
+                    ),
+                    meetupDateTime = ride.meetupDateTimeLabel,
+                    waitTimeMinutes = ride.waitTimeMinutes,
+                    hostName = ride.hostName,
+                    hostRating = ride.hostRating,
+                    hostVehicleType = ride.hostVehicleType,
+                    peopleCount = ride.peopleCount
+                )
+            }
         }
     }
 
@@ -313,7 +330,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         binding.searchBarContainer.setContent {
-            mapSearchBar(
+            mapHomeSearchBarScreen(
                 query = searchQuery,
                 requestFocus = shouldRequestSearchFocus,
                 onFocusHandled = { shouldRequestSearchFocus = false },
@@ -341,22 +358,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         }
     }
 
-    private fun openRideDetail(ride: RideListItem) {
-            val distanceKm = String.format(Locale.US, "%.2f", ride.pickupDistanceMeters / 1000f)
-            startActivity(
-                RideDetailActivity.createIntent(
-                    this,
-                    ride.meetupLabel,
-                    ride.destinationLabel,
-                    distanceKm,
-                    ride.meetupDateTimeLabel,
-                    ride.waitTimeMinutes,
-                    ride.hostName,
-                    ride.hostRating,
-                    ride.hostVehicleType,
-                    ride.peopleCount
-                )
-            )
+    private fun showRideDetailForHistoryRide(ride: RideListItem) {
+        selectedHistoryRide = ride
+        showRideDetailContent()
     }
 
     private fun selectRideForDetail(ride: RideListItem) {
@@ -566,23 +570,11 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         binding.createRideButton.setContent {
-            val isJoinRideMode = selectedRide != null
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 5.dp),
-                contentAlignment = if (isJoinRideMode) Alignment.BottomCenter else Alignment.BottomEnd
-            ) {
-                hopOnButton(
-                    text = if (isJoinRideMode) "Join Ride" else "Create ride",
-                    onClick = if (isJoinRideMode) ::handleJoinRideClick else ::handleCreateRideClick,
-                    modifier = if (isJoinRideMode) {
-                        Modifier.fillMaxWidth(0.8f)
-                    } else {
-                        Modifier.padding(end = 15.dp)
-                    }
-                )
-            }
+            mapHomePrimaryActionButton(
+                selectedRide = selectedRide,
+                onCreateRideClick = ::handleCreateRideClick,
+                onJoinRideClick = ::handleJoinRideClick
+            )
         }
     }
 
@@ -591,7 +583,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         binding.bottomNav.setContent {
-            mapsBottomNavigation(
+            mapHomeBottomNavigationScreen(
                 selectedItem = selectedBottomNavItem,
                 onItemSelected = ::handleBottomNavSelection
             )
@@ -617,7 +609,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     override fun onResume() {
         super.onResume()
         selectedBottomNavItem = when {
-            isHistoryVisible -> MapsBottomNavItem.RIDES
+            isHistoryVisible || isRideDetailVisible -> MapsBottomNavItem.RIDES
             isProfileVisible -> MapsBottomNavItem.PROFILE
             else -> MapsBottomNavItem.HOME
         }
@@ -626,6 +618,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun showHistoryContent() {
         animateMainContentTransition()
         isHistoryVisible = true
+        isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = false
         historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
@@ -633,6 +626,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
         )
         binding.historyContent.visibility = View.VISIBLE
+        binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
@@ -647,9 +641,11 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun showMapContent() {
         animateMainContentTransition()
         isHistoryVisible = false
+        isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = false
         binding.historyContent.visibility = View.GONE
+        binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.VISIBLE
@@ -663,10 +659,32 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun showProfileContent() {
         animateMainContentTransition()
         isHistoryVisible = false
+        isRideDetailVisible = false
         isProfileVisible = true
         isRideInProcessVisible = false
         binding.historyContent.visibility = View.GONE
+        binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.VISIBLE
+        binding.rideInProcessContent.visibility = View.GONE
+        binding.searchBarContainer.visibility = View.GONE
+        binding.predictionsCard.visibility = View.GONE
+        binding.ridesBottomSheetCard.visibility = View.GONE
+        binding.mapTouchOverlay.visibility = View.GONE
+        binding.createRideButton.visibility = View.GONE
+        clearRideDetailSelection()
+        clearMeetupLocationMarkers()
+        selectedHistoryRide = null
+    }
+
+    private fun showRideDetailContent() {
+        animateMainContentTransition()
+        isHistoryVisible = false
+        isRideDetailVisible = true
+        isProfileVisible = false
+        isRideInProcessVisible = false
+        binding.historyContent.visibility = View.GONE
+        binding.rideDetailContent.visibility = View.VISIBLE
+        binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
@@ -680,9 +698,11 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun showRideInProcessContent() {
         animateMainContentTransition()
         isHistoryVisible = false
+        isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = true
         binding.historyContent.visibility = View.GONE
+        binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
@@ -692,6 +712,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.createRideButton.visibility = View.GONE
         clearRideDetailSelection()
         clearMeetupLocationMarkers()
+        selectedHistoryRide = null
     }
 
     private fun animateMainContentTransition() {

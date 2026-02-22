@@ -34,11 +34,13 @@
     <string name="people_count_format">People on this ride: %1$d</string>
     <string name="people_ratio_format">%1$d/%2$d</string>
     <string name="ride_detail_title">Ride Detail</string>
+    <string name="ride_detail_back">Back</string>
     <string name="meetup_location_label">Meetup location</string>
     <string name="destination_label">Destination</string>
     <string name="nav_home">Home</string>
     <string name="nav_rides">Rides</string>
     <string name="nav_history">History</string>
+    <string name="history_route_format">%1$s to %2$s</string>
     <string name="nav_profile">Profile</string>
     <string name="profile_title">Profile</string>
     <string name="logout">Log out</string>
@@ -50,6 +52,9 @@
     <string name="close">Close</string>
     <string name="no_places_found">No places found</string>
     <string name="no_ride_history">No joined or created rides yet</string>
+    <string name="ride_role_joined">Joined</string>
+    <string name="ride_role_hosted">Hosted</string>
+    <string name="me_label">Me</string>
     <string name="ride_in_process_title">Ride In Process</string>
     <string name="ride_in_process_placeholder">Placeholder Screen</string>
 </resources>

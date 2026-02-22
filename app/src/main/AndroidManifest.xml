@@ -41,11 +41,6 @@
             android:theme="@style/MapsTheme" />
 
         <activity
-            android:name=".ui.rides.RideDetailActivity"
-            android:exported="false"
-            android:theme="@style/AppTheme" />
-
-        <activity
             android:name=".ui.navigation.NavigationActivity"
             android:exported="false"
             android:theme="@style/MapsTheme" />

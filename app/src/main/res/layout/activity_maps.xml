@@ -72,6 +72,16 @@
         app:layout_constraintStart_toStartOf="parent" />
 
     <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/rideDetailContent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@+id/map"
+        app:layout_constraintBottom_toTopOf="@+id/bottomNav"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/profileContent"
         android:layout_width="0dp"
         android:layout_height="0dp"

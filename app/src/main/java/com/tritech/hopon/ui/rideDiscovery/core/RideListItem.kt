@@ -2,6 +2,11 @@ package com.tritech.hopon.ui.rideDiscovery.core
 
 import com.google.android.gms.maps.model.LatLng
 
+enum class RideParticipationRole {
+    JOINED,
+    HOSTED
+}
+
 data class RideListItem(
     val meetupLabel: String,
     val meetupLatLng: LatLng,
@@ -14,5 +19,8 @@ data class RideListItem(
     val hostRating: Float,
     val hostVehicleType: String,
     val peopleCount: Int,
-    val maxPeopleCount: Int
+    val maxPeopleCount: Int,
+    val participationRole: RideParticipationRole? = null,
+    val isCompleted: Boolean = false,
+    val rideTimeMinutes: Int? = null
 )
