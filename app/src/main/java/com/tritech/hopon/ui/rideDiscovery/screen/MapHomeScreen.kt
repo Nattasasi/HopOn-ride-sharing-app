@@ -22,6 +22,7 @@ fun mapHomeRideResultsScreen(
     expanded: Boolean,
     rides: List<RideListItem>,
     selectedRide: RideListItem?,
+    currentUserName: String,
     onExpandChange: (Boolean) -> Unit,
     onRideClick: (RideListItem) -> Unit
 ) {
@@ -31,6 +32,7 @@ fun mapHomeRideResultsScreen(
         onExpandChange = onExpandChange,
         rides = rides,
         selectedRide = selectedRide,
+        currentUserName = currentUserName,
         onRideClick = onRideClick
     )
 }

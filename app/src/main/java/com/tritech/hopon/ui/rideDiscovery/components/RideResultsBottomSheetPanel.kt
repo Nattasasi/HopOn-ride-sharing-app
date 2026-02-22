@@ -57,6 +57,7 @@ fun rideResultsBottomSheetPanel(
     onExpandChange: (Boolean) -> Unit,
     rides: List<RideListItem>,
     selectedRide: RideListItem?,
+    currentUserName: String,
     onRideClick: (RideListItem) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -191,6 +192,7 @@ fun rideResultsBottomSheetPanel(
                             pickupDistanceMeters = selectedRide.pickupDistanceMeters,
                             waitTimeMinutes = selectedRide.waitTimeMinutes,
                             hostName = selectedRide.hostName,
+                            currentUserName = currentUserName,
                             hostRating = selectedRide.hostRating,
                             hostVehicleType = selectedRide.hostVehicleType,
                             peopleCount = selectedRide.peopleCount,
@@ -219,6 +221,7 @@ fun rideResultsBottomSheetPanel(
                                             meetupDateTimeLabel = ride.meetupDateTimeLabel,
                                             pickupDistanceMeters = ride.pickupDistanceMeters,
                                             hostName = ride.hostName,
+                                            currentUserName = currentUserName,
                                             waitTimeMinutes = ride.waitTimeMinutes,
                                             peopleCount = ride.peopleCount,
                                             maxPeopleCount = ride.maxPeopleCount,

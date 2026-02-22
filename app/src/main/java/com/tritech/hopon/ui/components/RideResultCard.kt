@@ -36,8 +36,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tritech.hopon.R
+import com.tritech.hopon.ui.rideDiscovery.core.RideDateTimeFormatter
 import com.tritech.hopon.ui.rideDiscovery.core.RideParticipationRole
-import java.text.SimpleDateFormat
 import java.util.Locale
 
 private const val RideCardIconScale = 1.8f
@@ -49,6 +49,7 @@ fun rideResultCard(
     meetupDateTimeLabel: String,
     pickupDistanceMeters: Float,
     hostName: String,
+    currentUserName: String? = null,
     waitTimeMinutes: Int,
     peopleCount: Int,
     maxPeopleCount: Int = 4,
@@ -63,6 +64,14 @@ fun rideResultCard(
     val (meetupDate, meetupTime) = splitMeetupDateTime(meetupDateTimeLabel)
     val distanceText = formatDistanceLabel(pickupDistanceMeters)
     val rideTimeText = formatRideTimeLabel(rideTimeMinutes)
+    val displayedHostName = if (
+        !currentUserName.isNullOrBlank() &&
+        hostName.trim().equals(currentUserName.trim(), ignoreCase = true)
+    ) {
+        stringResource(id = R.string.me_label)
+    } else {
+        hostName
+    }
 
     Card(
         modifier = modifier
@@ -180,7 +189,7 @@ fun rideResultCard(
                                 modifier = Modifier.size((15f * RideCardIconScale).dp)
                             )
                         },
-                        text = hostName
+                        text = displayedHostName
                     )
                     compactInfoCell(
                         icon = {
@@ -283,51 +292,9 @@ private fun infoCell(
 }
 
 private fun splitMeetupDateTime(label: String): Pair<String, String> {
-    val parts = label.split(",", limit = 2)
-    if (parts.size == 2) {
-        val dateStr = parts[0].trim()
-        val timeStr = parts[1].trim()
-        val formattedDate = formatDateLabel(dateStr)
-        return formattedDate to timeStr
-    }
-    return label.trim() to "--"
-}
-
-private fun formatDateLabel(dateStr: String): String {
-    // If it's already "Today" or "Tomorrow", return as-is
-    if (dateStr.equals("Today", ignoreCase = true) || dateStr.equals("Tomorrow", ignoreCase = true)) {
-        return dateStr
-    }
-    
-    // Try to parse and format as "Feb 22"
-    return try {
-        // Try common date formats
-        val inputFormats = listOf(
-            SimpleDateFormat("MMM dd, yyyy", Locale.US),
-            SimpleDateFormat("MMM dd", Locale.US),
-            SimpleDateFormat("yyyy-MM-dd", Locale.US),
-            SimpleDateFormat("MM/dd/yyyy", Locale.US),
-            SimpleDateFormat("dd/MM/yyyy", Locale.US)
-        )
-        
-        val outputFormat = SimpleDateFormat("MMM dd", Locale.US)
-        
-        for (format in inputFormats) {
-            try {
-                val date = format.parse(dateStr)
-                if (date != null) {
-                    return outputFormat.format(date)
-                }
-            } catch (e: Exception) {
-                continue
-            }
-        }
-        
-        // If no format worked, return original
-        dateStr
-    } catch (e: Exception) {
-        dateStr
-    }
+    val (datePart, timePart) = RideDateTimeFormatter.splitMeetupDateTimeLabel(label)
+    val formattedDate = RideDateTimeFormatter.formatDateLabelForDisplay(datePart)
+    return formattedDate to timePart.ifEmpty { "--" }
 }
 
 private fun formatDistanceLabel(distanceMeters: Float): String {

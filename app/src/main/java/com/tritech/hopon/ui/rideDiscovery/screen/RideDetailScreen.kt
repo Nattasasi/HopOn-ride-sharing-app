@@ -43,10 +43,20 @@ fun rideDetailScreen(
     meetupDateTime: String,
     waitTimeMinutes: Int,
     hostName: String,
+    currentUserName: String? = null,
     hostRating: Float,
     hostVehicleType: String,
     peopleCount: Int
 ) {
+    val displayedHostName = if (
+        !currentUserName.isNullOrBlank() &&
+        hostName.trim().equals(currentUserName.trim(), ignoreCase = true)
+    ) {
+        stringResource(id = R.string.me_label)
+    } else {
+        hostName
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -118,7 +128,7 @@ fun rideDetailScreen(
         Text(
             text = stringResource(
                 id = R.string.host_detail_format,
-                hostName,
+                displayedHostName,
                 String.format(Locale.US, "%.1f", hostRating),
                 hostVehicleType
             ),

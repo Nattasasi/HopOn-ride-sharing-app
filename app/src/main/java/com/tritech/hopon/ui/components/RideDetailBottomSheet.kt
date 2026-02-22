@@ -39,6 +39,7 @@ fun rideDetailBottomSheet(
     pickupDistanceMeters: Float,
     waitTimeMinutes: Int,
     hostName: String,
+    currentUserName: String? = null,
     hostRating: Float,
     hostVehicleType: String,
     peopleCount: Int,
@@ -48,6 +49,14 @@ fun rideDetailBottomSheet(
 ) {
     val iconTint = colorResource(id = R.color.colorPrimaryDark)
     val distanceKm = String.format(Locale.US, "%.2f", pickupDistanceMeters / 1000f)
+    val displayedHostName = if (
+        !currentUserName.isNullOrBlank() &&
+        hostName.trim().equals(currentUserName.trim(), ignoreCase = true)
+    ) {
+        stringResource(id = R.string.me_label)
+    } else {
+        hostName
+    }
 
     Column(
         modifier = modifier
@@ -151,7 +160,7 @@ fun rideDetailBottomSheet(
                             modifier = Modifier.size(20.dp)
                         )
                     },
-                    label = "$hostName • $hostVehicleType"
+                    label = "$displayedHostName • $hostVehicleType"
                 )
 
                 // Host Rating

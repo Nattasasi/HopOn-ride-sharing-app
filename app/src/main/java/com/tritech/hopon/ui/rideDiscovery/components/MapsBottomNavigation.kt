@@ -25,12 +25,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.unit.dp
@@ -76,21 +72,6 @@ fun mapsBottomNavigation(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .drawBehind {
-                val shadowHeight = 4.dp.toPx()
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.10f),
-                            Color.Transparent
-                        ),
-                        startY = 0f,
-                        endY = shadowHeight
-                    ),
-                    topLeft = Offset(0f, 0f),
-                    size = Size(size.width, shadowHeight)
-                )
-            }
     ) {
         NavigationBar(
             modifier = Modifier.fillMaxWidth(),

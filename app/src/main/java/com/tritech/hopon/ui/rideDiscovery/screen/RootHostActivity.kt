@@ -2,10 +2,14 @@ package com.tritech.hopon.ui.rideDiscovery.screen
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.Location
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -33,7 +39,6 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
-import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -52,6 +57,7 @@ import com.tritech.hopon.databinding.ActivityMapsBinding
 import com.tritech.hopon.ui.auth.LoginActivity
 import com.tritech.hopon.ui.rideDiscovery.components.MapsBottomNavAction
 import com.tritech.hopon.ui.rideDiscovery.components.MapsBottomNavItem
+import com.tritech.hopon.ui.rideDiscovery.components.mainMapHost
 import com.tritech.hopon.ui.rideDiscovery.components.mapBottomNavItemToAction
 import com.tritech.hopon.ui.rideDiscovery.core.MapUiStateCoordinator
 import com.tritech.hopon.ui.rideDiscovery.core.RidePanelCoordinator
@@ -61,7 +67,9 @@ import com.tritech.hopon.ui.rideDiscovery.core.PlacesSearchDataSource
 import com.tritech.hopon.ui.rideDiscovery.core.RoutesApiClient
 import com.tritech.hopon.ui.rideDiscovery.core.CreateRideSubmission
 import com.tritech.hopon.ui.rideDiscovery.core.MockData
+import com.tritech.hopon.ui.rideDiscovery.core.RideDateTimeFormatter
 import com.tritech.hopon.ui.rideDiscovery.core.RideListItem
+import com.tritech.hopon.ui.rideDiscovery.core.RideLifecycleStatus
 import com.tritech.hopon.ui.rideDiscovery.core.MapsPresenter
 import com.tritech.hopon.ui.rideDiscovery.core.MapsView
 import com.tritech.hopon.ui.rides.core.RideHistoryProvider
@@ -83,6 +91,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         private const val TAG = "RootHostActivity"
         private const val LOCATION_PERMISSION_REQUEST_CODE = 999
         private const val PLACE_REQUEST_CODE = 2001
+        private const val EXTRA_OPEN_RIDE_IN_PROCESS = "extra_open_ride_in_process"
+        private const val RIDE_ONGOING_CHANNEL_ID = "ride_ongoing_channel"
+        private const val RIDE_ONGOING_NOTIFICATION_ID = 9001
     }
 
     private lateinit var binding: ActivityMapsBinding
@@ -150,6 +161,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var selectedHistoryRide by mutableStateOf<RideListItem?>(null)
     private var rideRoutePolyline: Polyline? = null
     private var pickupRoutePolyline: Polyline? = null
+    private var rideRoutePoints by mutableStateOf<List<LatLng>>(emptyList())
+    private var pickupRoutePoints by mutableStateOf<List<LatLng>>(emptyList())
     private val meetupPinSizePx = 94
     private val meetupPinSelectedSizePx = 112
 
@@ -214,6 +227,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         setUpPredictionsCompose()
         setUpSearchBarCompose()
         setUpBackPressHandler()
+        ensureRideOngoingNotificationChannel()
+        setUpMainMapCompose()
 
         // Live mode initializes Places API client + websocket presenter.
         if (!BuildConfig.USE_MOCK_DATA) {
@@ -225,15 +240,19 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             presenter?.onAttach(this)
         }
 
-        val mapFragment = supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
-        mapFragment.getMapAsync(this)
-
         // Initialize to Assumption University as default for testing on emulator without GPS.
         // Real location provider will override this if a valid location is obtained.
         currentLatLng = mockCurrentLocation
         pickUpLatLng = mockCurrentLocation
 
         setUpClickListener()
+        handleNavigationIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNavigationIntent(intent)
     }
 
     private fun setUpBackPressHandler() {
@@ -254,6 +273,15 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         }
     }
 
+    private fun setUpMainMapCompose() {
+        binding.mapCompose.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.mapCompose.setContent {
+            mainMapHost(onMapReady = ::onMapReady)
+        }
+    }
+
     private fun dismissTransientMapUi(): Boolean {
         return mapUiStateCoordinator.dismissTransientMapUi()
     }
@@ -270,6 +298,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             mapHomeRideResultsScreen(
                 visible = isRidePanelVisible,
                 expanded = isRidePanelExpanded,
+                currentUserName = resolveCurrentUserDisplayName(),
                 onExpandChange = { expanded ->
                     if (expanded) expandRidePanel() else collapseRidePanel()
                 },
@@ -302,6 +331,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.historyContent.setContent {
             historyRidesScreen(
                 rides = historyRideItems,
+                currentUserName = resolveCurrentUserDisplayName(),
                 onRideClick = ::showRideDetailForHistoryRide
             )
         }
@@ -326,6 +356,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     meetupDateTime = ride.meetupDateTimeLabel,
                     waitTimeMinutes = ride.waitTimeMinutes,
                     hostName = ride.hostName,
+                    currentUserName = resolveCurrentUserDisplayName(),
                     hostRating = ride.hostRating,
                     hostVehicleType = ride.hostVehicleType,
                     peopleCount = ride.peopleCount
@@ -340,10 +371,15 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         )
         binding.profileContent.setContent {
             profileScreen(
-                userName = SessionManager.getCurrentUserId(this) ?: "u001",
+                userName = getString(R.string.me_label),
                 onLogoutClick = ::logoutAndNavigateToLogin
             )
         }
+    }
+
+    private fun resolveCurrentUserDisplayName(): String {
+        val currentUserId = SessionManager.getCurrentUserId(this)
+        return MockData.userNameForId(currentUserId) ?: currentUserId.orEmpty()
     }
 
     private fun setUpRideInProcessCompose() {
@@ -351,7 +387,23 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         binding.rideInProcessContent.setContent {
-            rideInProcessScreen()
+            val currentUserId = SessionManager.getCurrentUserId(this)
+            val ongoingRide = MockData.ongoingRideForUser(currentUserId)
+            rideInProcessScreen(
+                destinationLabel = ongoingRide?.destinationLabel,
+                meetupLabel = ongoingRide?.meetupLabel,
+                meetupDateTimeLabel = ongoingRide?.meetupDateTimeLabel,
+                waitTimeMinutes = ongoingRide?.waitTimeMinutes,
+                peopleCount = ongoingRide?.peopleCount,
+                maxPeopleCount = ongoingRide?.maxPeopleCount,
+                hostName = ongoingRide?.host?.name,
+                currentLocationLatLng = currentLatLng,
+                meetupLatLng = ongoingRide?.meetupLatLng,
+                destinationLatLng = ongoingRide?.destinationLatLng,
+                pickupRoutePoints = pickupRoutePoints,
+                rideRoutePoints = rideRoutePoints,
+                onBackClick = ::showHistoryContent
+            )
         }
     }
 
@@ -422,12 +474,18 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun showRideDetailForHistoryRide(ride: RideListItem) {
+        if (ride.lifecycleStatus == RideLifecycleStatus.ONGOING) {
+            showRideInProcessContent()
+            return
+        }
         selectedHistoryRide = ride
         showRideDetailContent()
     }
 
     private fun selectRideForDetail(ride: RideListItem) {
         selectedRide = ride
+        rideRoutePoints = emptyList()
+        pickupRoutePoints = emptyList()
         collapseRidePanel()  // Reset to peek state when showing detail
         requestRideRoute(ride.meetupLatLng, ride.destinationLatLng)
         currentLatLng?.let { requestPickupRoute(it, ride.meetupLatLng) }
@@ -449,6 +507,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         rideRoutePolyline = null
         pickupRoutePolyline?.remove()
         pickupRoutePolyline = null
+        rideRoutePoints = emptyList()
+        pickupRoutePoints = emptyList()
         
         // Clear marker selection
         clearSelectedMeetupMarker()
@@ -496,6 +556,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun drawRideRoutePath(latLngList: List<LatLng>) {
         rideRoutePolyline?.remove()
+        rideRoutePoints = latLngList
 
         val builder = LatLngBounds.Builder()
         for (latLng in latLngList) {
@@ -513,6 +574,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun drawRideRouteFallback(meetupLatLng: LatLng, destinationLatLng: LatLng) {
         rideRoutePolyline?.remove()
+        rideRoutePoints = listOf(meetupLatLng, destinationLatLng)
 
         val polylineOptions = PolylineOptions()
         polylineOptions.color(ContextCompat.getColor(this, R.color.colorAccent))
@@ -545,6 +607,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun drawPickupRoutePath(latLngList: List<LatLng>) {
         pickupRoutePolyline?.remove()
+        pickupRoutePoints = latLngList
 
         val polylineOptions = PolylineOptions()
         polylineOptions.color(ContextCompat.getColor(this, R.color.colorPrimary))
@@ -555,6 +618,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun drawPickupRouteFallback(startLatLng: LatLng, meetupLatLng: LatLng) {
         pickupRoutePolyline?.remove()
+        pickupRoutePoints = listOf(startLatLng, meetupLatLng)
 
         val polylineOptions = PolylineOptions()
         polylineOptions.color(ContextCompat.getColor(this, R.color.colorPrimary))
@@ -700,6 +764,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = false
         isRideInProcessVisible = false
         isCreateRideVisible = false
+        isRidePanelVisible = false
+        isRidePanelExpanded = false
         historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
             context = this,
             pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
@@ -749,6 +815,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = true
         isRideInProcessVisible = false
         isCreateRideVisible = false
+        isRidePanelVisible = false
+        isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.VISIBLE
@@ -771,6 +839,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = false
         isRideInProcessVisible = false
         isCreateRideVisible = false
+        isRidePanelVisible = false
+        isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.VISIBLE
         binding.profileContent.visibility = View.GONE
@@ -792,6 +862,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = false
         isRideInProcessVisible = true
         isCreateRideVisible = false
+        isRidePanelVisible = false
+        isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
@@ -805,6 +877,62 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         clearRideDetailSelection()
         clearMeetupLocationMarkers()
         selectedHistoryRide = null
+
+        val currentUserId = SessionManager.getCurrentUserId(this)
+        val ongoingRide = MockData.ongoingRideForUser(currentUserId)
+        requestRideInProcessRoutes(
+            current = currentLatLng,
+            meetup = ongoingRide?.meetupLatLng,
+            destination = ongoingRide?.destinationLatLng
+        )
+    }
+
+    private fun requestRideInProcessRoutes(
+        current: LatLng?,
+        meetup: LatLng?,
+        destination: LatLng?
+    ) {
+        pickupRoutePoints = emptyList()
+        rideRoutePoints = emptyList()
+
+        val routesApiKey = getString(R.string.routes_api_key)
+        if (routesApiKey.isBlank()) {
+            pickupRoutePoints = listOfNotNull(current, meetup)
+            rideRoutePoints = listOfNotNull(meetup, destination)
+            return
+        }
+
+        if (current != null && meetup != null) {
+            routesApiClient.computeRoute(
+                origin = current,
+                destination = meetup,
+                routesApiKey = routesApiKey
+            ) { latLngList ->
+                runOnUiThread {
+                    pickupRoutePoints = if (latLngList != null && latLngList.size >= 2) {
+                        latLngList
+                    } else {
+                        listOf(current, meetup)
+                    }
+                }
+            }
+        }
+
+        if (meetup != null && destination != null) {
+            routesApiClient.computeRoute(
+                origin = meetup,
+                destination = destination,
+                routesApiKey = routesApiKey
+            ) { latLngList ->
+                runOnUiThread {
+                    rideRoutePoints = if (latLngList != null && latLngList.size >= 2) {
+                        latLngList
+                    } else {
+                        listOf(meetup, destination)
+                    }
+                }
+            }
+        }
     }
 
     private fun showCreateRideContent() {
@@ -814,6 +942,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = false
         isRideInProcessVisible = false
         isCreateRideVisible = true
+        isRidePanelVisible = false
+        isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
@@ -856,13 +986,99 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun handleCreateRideSubmit(submission: CreateRideSubmission) {
         val currentUserId = SessionManager.getCurrentUserId(this)
         val createdRide = MockData.addCreatedRide(submission, currentUserId)
+        var isStartedAsOngoing = false
+
+        if (shouldAutoStartCreatedRide(createdRide.meetupDateLabel, createdRide.meetupTimeLabel)) {
+            isStartedAsOngoing = MockData.startOngoingRide(
+                userId = currentUserId,
+                meetupLabel = createdRide.meetupLabel,
+                destinationLabel = createdRide.destinationLabel,
+                meetupDateTimeLabel = createdRide.meetupDateTimeLabel,
+                hostName = createdRide.host.name
+            )
+            if (isStartedAsOngoing && !BuildConfig.USE_MOCK_DATA) {
+                sendRideOngoingNotification()
+            }
+        }
+
+        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
+            context = this,
+            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
+        )
 
         createRideDestination = createdRide.destinationLabel
         createRideDestinationLatLng = createdRide.destinationLatLng
 
-        showMapContent()
-        applySelectedPlace(createdRide.destinationLabel, createdRide.destinationLatLng)
-        Toast.makeText(this, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
+        if (isStartedAsOngoing) {
+            showRideInProcessContent()
+        } else {
+            showMapContent()
+            applySelectedPlace(createdRide.destinationLabel, createdRide.destinationLatLng)
+            Toast.makeText(this, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handleNavigationIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_RIDE_IN_PROCESS, false) == true) {
+            selectedBottomNavItem = MapsBottomNavItem.RIDES
+            showRideInProcessContent()
+            intent.removeExtra(EXTRA_OPEN_RIDE_IN_PROCESS)
+        }
+    }
+
+    private fun ensureRideOngoingNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+        val channel = NotificationChannel(
+            RIDE_ONGOING_CHANNEL_ID,
+            getString(R.string.ride_ongoing_notification_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = getString(R.string.ride_ongoing_notification_channel_description)
+        }
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.createNotificationChannel(channel)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun sendRideOngoingNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        val openRideInProcessIntent = Intent(this, RootHostActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_OPEN_RIDE_IN_PROCESS, true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            RIDE_ONGOING_NOTIFICATION_ID,
+            openRideInProcessIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, RIDE_ONGOING_CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(getString(R.string.ride_ongoing_notification_title))
+            .setContentText(getString(R.string.ride_ongoing_notification_body))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        NotificationManagerCompat.from(this).notify(RIDE_ONGOING_NOTIFICATION_ID, notification)
+    }
+
+    private fun shouldAutoStartCreatedRide(meetupDate: String, meetupTime: String): Boolean {
+        val scheduledAtMillis = RideDateTimeFormatter.parseSubmissionMeetupToEpochMillis(
+            meetupDate.trim(),
+            meetupTime.trim()
+        )
+            ?: return false
+        return scheduledAtMillis <= System.currentTimeMillis()
     }
 
     private fun handleCreateRideFocusChanged(field: CreateRideLocationField, hasFocus: Boolean) {

@@ -39,6 +39,7 @@ private val SectionTitleInset = 4.dp
 @Composable
 fun historyRidesScreen(
     rides: List<RideListItem>,
+    currentUserName: String,
     onRideClick: (RideListItem) -> Unit
 ) {
     val ongoingRides = rides.filter { it.lifecycleStatus == RideLifecycleStatus.ONGOING }
@@ -86,18 +87,21 @@ fun historyRidesScreen(
                     title = ongoingTitle,
                     status = RideLifecycleStatus.ONGOING,
                     rides = ongoingRides,
+                    currentUserName = currentUserName,
                     onRideClick = onRideClick
                 )
                 historyRideSection(
                     title = upcomingTitle,
                     status = RideLifecycleStatus.UPCOMING,
                     rides = upcomingRides,
+                    currentUserName = currentUserName,
                     onRideClick = onRideClick
                 )
                 historyRideSection(
                     title = completedTitle,
                     status = RideLifecycleStatus.COMPLETED,
                     rides = completedRides,
+                    currentUserName = currentUserName,
                     onRideClick = onRideClick
                 )
             }
@@ -109,6 +113,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.historyRideSection(
     title: String,
     status: RideLifecycleStatus,
     rides: List<RideListItem>,
+    currentUserName: String,
     onRideClick: (RideListItem) -> Unit
 ) {
     if (rides.isEmpty()) {
@@ -148,6 +153,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.historyRideSection(
             meetupDateTimeLabel = ride.meetupDateTimeLabel,
             pickupDistanceMeters = ride.pickupDistanceMeters,
             hostName = ride.hostName,
+            currentUserName = currentUserName,
             waitTimeMinutes = ride.waitTimeMinutes,
             peopleCount = ride.peopleCount,
             maxPeopleCount = ride.maxPeopleCount,

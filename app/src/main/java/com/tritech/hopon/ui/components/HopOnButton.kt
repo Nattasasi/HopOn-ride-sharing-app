@@ -22,7 +22,9 @@ fun hopOnButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    containerColor: Color = colorResource(id = R.color.colorPrimary),
+    disabledContainerColor: Color = colorResource(id = R.color.colorPrimaryDark)
 ) {
     val urbanistSemiBold = FontFamily(
         Font(R.font.urbanist_semibold, FontWeight.SemiBold)
@@ -38,9 +40,9 @@ fun hopOnButton(
             vertical = 10.dp
         ),
         colors = ButtonDefaults.buttonColors(
-            containerColor = colorResource(id = R.color.colorPrimary),
+            containerColor = containerColor,
             contentColor = Color.White,
-            disabledContainerColor = colorResource(id = R.color.colorPrimaryDark),
+            disabledContainerColor = disabledContainerColor,
             disabledContentColor = Color.White.copy(alpha = 0.6f)
         )
     ) {

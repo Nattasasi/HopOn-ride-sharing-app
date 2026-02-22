@@ -74,10 +74,8 @@ import com.tritech.hopon.R
 import com.tritech.hopon.ui.components.hopOnButton
 import com.tritech.hopon.ui.rideDiscovery.components.placePredictionsPanel
 import com.tritech.hopon.ui.rideDiscovery.core.CreateRideSubmission
-import java.text.SimpleDateFormat
+import com.tritech.hopon.ui.rideDiscovery.core.RideDateTimeFormatter
 import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -401,8 +399,7 @@ fun createRideScreen(
                         val calendar = Calendar.getInstance().apply {
                             timeInMillis = millis
                         }
-                        val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-                        date = dateFormat.format(Date(millis))
+                        date = RideDateTimeFormatter.canonicalDateLabelForNow(calendar)
                     }
                     showDatePicker = false
                 }) {
@@ -425,9 +422,11 @@ fun createRideScreen(
             onDismissRequest = { showTimePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    val hour = timePickerState.hour
-                    val minute = timePickerState.minute
-                    time = String.format(Locale.getDefault(), "%02d:%02d", hour, minute)
+                    val calendar = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, timePickerState.hour)
+                        set(Calendar.MINUTE, timePickerState.minute)
+                    }
+                    time = RideDateTimeFormatter.canonicalTimeLabelForNow(calendar)
                     showTimePicker = false
                 }) {
                     Text("OK")
