@@ -664,12 +664,17 @@ class MapsActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 15.dp, end = 15.dp, bottom = 5.dp),
+                    .padding(bottom = 5.dp),
                 contentAlignment = if (isJoinRideMode) Alignment.BottomCenter else Alignment.BottomEnd
             ) {
                 hopOnButton(
                     text = if (isJoinRideMode) "Join Ride" else "Create ride",
-                    onClick = if (isJoinRideMode) ::handleJoinRideClick else ::handleCreateRideClick
+                    onClick = if (isJoinRideMode) ::handleJoinRideClick else ::handleCreateRideClick,
+                    modifier = if (isJoinRideMode) {
+                        Modifier.fillMaxWidth(0.8f)
+                    } else {
+                        Modifier.padding(end = 15.dp)
+                    }
                 )
             }
         }
