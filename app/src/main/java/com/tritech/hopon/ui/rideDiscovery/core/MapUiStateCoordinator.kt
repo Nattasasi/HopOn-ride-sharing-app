@@ -45,13 +45,13 @@ class MapUiStateCoordinator(
     }
 
     fun dismissTransientMapUi(): Boolean {
-        if (hasSelectedRide()) {
-            clearRideDetailSelection()
+        if (isRidePanelVisible() && isRidePanelExpanded()) {
+            collapseRidePanel()
             return true
         }
 
-        if (isRidePanelVisible() && isRidePanelExpanded()) {
-            collapseRidePanel()
+        if (hasSelectedRide()) {
+            clearRideDetailSelection()
             return true
         }
 
