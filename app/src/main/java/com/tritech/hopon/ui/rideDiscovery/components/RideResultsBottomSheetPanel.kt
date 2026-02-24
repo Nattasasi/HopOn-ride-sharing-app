@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
 private val RideResultCardHeight = 130.dp
 private val HandleHeight = 5.dp
 private val HandlePadding = 16.dp  // approximate top+bottom
-private val DetailPeekHeight = 145.dp  // Slightly taller peek in detail mode
+private val SharedPeekHeight = RideResultCardHeight * 3/2
 
 
 @Composable
@@ -68,12 +68,7 @@ fun rideResultsBottomSheetPanel(
 
     val isDetailMode = selectedRide != null
     
-    // Different heights for list mode vs detail mode
-    val peekHeight = if (isDetailMode) {
-        DetailPeekHeight + HandleHeight + HandlePadding
-    } else {
-        RideResultCardHeight * 3/2 + HandleHeight + HandlePadding
-    }
+    val peekHeight = SharedPeekHeight + HandleHeight + HandlePadding
     
     val expandedHeight = if (isDetailMode) {
         screenHeight / 2  // Half screen for detail mode

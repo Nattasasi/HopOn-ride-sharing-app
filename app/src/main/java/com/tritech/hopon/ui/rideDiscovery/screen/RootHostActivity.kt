@@ -66,6 +66,7 @@ import com.tritech.hopon.ui.rideDiscovery.core.MeetupMarkerController
 import com.tritech.hopon.ui.rideDiscovery.core.PlacesSearchDataSource
 import com.tritech.hopon.ui.rideDiscovery.core.RoutesApiClient
 import com.tritech.hopon.ui.rideDiscovery.core.CreateRideSubmission
+import com.tritech.hopon.ui.rideDiscovery.core.MockChatMessage
 import com.tritech.hopon.ui.rideDiscovery.core.MockData
 import com.tritech.hopon.ui.rideDiscovery.core.RideDateTimeFormatter
 import com.tritech.hopon.ui.rideDiscovery.core.RideListItem
@@ -142,6 +143,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var isProfileVisible by mutableStateOf(false)
     private var isRideInProcessVisible by mutableStateOf(false)
     private var isCreateRideVisible by mutableStateOf(false)
+    private var isGroupChatVisible by mutableStateOf(false)
+    private var groupChatMessages by mutableStateOf<List<MockChatMessage>>(emptyList())
+    private var groupChatParticipants by mutableStateOf<List<String>>(emptyList())
     private var createRideDestination by mutableStateOf("")
     private var createRideDestinationLatLng: LatLng? = null
     private var createRideInitialMeetupLocation by mutableStateOf("")
@@ -223,6 +227,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         setUpRideDetailCompose()
         setUpProfileCompose()
         setUpRideInProcessCompose()
+        setUpGroupChatCompose()
         setUpCreateRideCompose()
         setUpPredictionsCompose()
         setUpSearchBarCompose()
@@ -259,6 +264,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         mapUiStateCoordinator.setUpBackPressHandler(this) {
             if (isRideDetailVisible) {
                 showHistoryContent()
+            } else if (isGroupChatVisible) {
+                showRideInProcessContent()
             } else if (
                 isHistoryVisible ||
                 isProfileVisible ||
@@ -402,9 +409,30 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 destinationLatLng = ongoingRide?.destinationLatLng,
                 pickupRoutePoints = pickupRoutePoints,
                 rideRoutePoints = rideRoutePoints,
+                onGroupChatClick = ::showGroupChatContent,
                 onBackClick = ::showHistoryContent
             )
         }
+    }
+
+    private fun setUpGroupChatCompose() {
+        binding.groupChatContent.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.groupChatContent.setContent {
+            groupChatScreen(
+                currentUserId = SessionManager.getCurrentUserId(this),
+                participants = groupChatParticipants,
+                messages = groupChatMessages,
+                onSendMessage = ::handleSendGroupChatMessage,
+                onBackClick = ::showRideInProcessContent
+            )
+        }
+    }
+
+    private fun handleSendGroupChatMessage(message: String) {
+        val currentUserId = SessionManager.getCurrentUserId(this)
+        groupChatMessages = MockData.sendGroupChatMessage(currentUserId, message)
     }
 
     private fun setUpCreateRideCompose() {
@@ -764,6 +792,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = false
         isRideInProcessVisible = false
         isCreateRideVisible = false
+        isGroupChatVisible = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
@@ -775,6 +804,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
+        binding.groupChatContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -791,11 +821,13 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = false
         isRideInProcessVisible = false
         isCreateRideVisible = false
+        isGroupChatVisible = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
+        binding.groupChatContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.VISIBLE
         binding.predictionsCard.visibility = View.GONE
         if (isRidePanelVisible) {
@@ -815,6 +847,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = true
         isRideInProcessVisible = false
         isCreateRideVisible = false
+        isGroupChatVisible = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
@@ -822,6 +855,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.profileContent.visibility = View.VISIBLE
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
+        binding.groupChatContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -839,6 +873,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = false
         isRideInProcessVisible = false
         isCreateRideVisible = false
+        isGroupChatVisible = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
@@ -846,6 +881,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
+        binding.groupChatContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -862,6 +898,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = false
         isRideInProcessVisible = true
         isCreateRideVisible = false
+        isGroupChatVisible = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
@@ -869,6 +906,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.VISIBLE
         binding.createRideContent.visibility = View.GONE
+        binding.groupChatContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -942,6 +980,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isProfileVisible = false
         isRideInProcessVisible = false
         isCreateRideVisible = true
+        isGroupChatVisible = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
@@ -949,6 +988,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.VISIBLE
+        binding.groupChatContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -965,6 +1005,37 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             duration = 180
         }
         TransitionManager.beginDelayedTransition(binding.root as ConstraintLayout, transition)
+    }
+
+    private fun showGroupChatContent() {
+        animateMainContentTransition()
+        isHistoryVisible = false
+        isRideDetailVisible = false
+        isProfileVisible = false
+        isRideInProcessVisible = false
+        isCreateRideVisible = false
+        isGroupChatVisible = true
+        isRidePanelVisible = false
+        isRidePanelExpanded = false
+        binding.historyContent.visibility = View.GONE
+        binding.rideDetailContent.visibility = View.GONE
+        binding.profileContent.visibility = View.GONE
+        binding.rideInProcessContent.visibility = View.GONE
+        binding.createRideContent.visibility = View.GONE
+        binding.groupChatContent.visibility = View.VISIBLE
+        binding.searchBarContainer.visibility = View.GONE
+        binding.predictionsCard.visibility = View.GONE
+        binding.ridesBottomSheetCard.visibility = View.GONE
+        binding.mapTouchOverlay.visibility = View.GONE
+        binding.createRideButton.visibility = View.GONE
+        clearRideDetailSelection()
+        clearMeetupLocationMarkers()
+        selectedHistoryRide = null
+
+        val currentUserId = SessionManager.getCurrentUserId(this)
+        groupChatMessages = MockData.groupChatMessagesForUser(currentUserId)
+        groupChatParticipants = MockData.groupChatParticipantsForUser(currentUserId)
+            .map { user -> user.name }
     }
 
     private fun handleCreateRideClick() {
@@ -1613,8 +1684,12 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun reset() {
         // Restore map and UI to pre-booking default state.
         isCreateRideVisible = false
+        isGroupChatVisible = false
         binding.createRideContent.visibility = View.GONE
+        binding.groupChatContent.visibility = View.GONE
         binding.createRideButton.visibility = View.GONE
+        groupChatMessages = emptyList()
+        groupChatParticipants = emptyList()
         hideRideResultsPanel(clearData = true)
         searchQuery = ""
         clearSearchFocus()

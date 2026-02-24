@@ -59,8 +59,15 @@ data class CreateRideSubmission(
     val additionalNotes: String
 )
 
+data class MockChatMessage(
+    val senderUserId: String,
+    val senderDisplayName: String,
+    val message: String,
+    val sentAtLabel: String
+)
+
 object MockData {
-    val placeholderPlaces = listOf(
+    val placeholderPlaces: List<PlaceholderPlace> = listOf(
         PlaceholderPlace("Siam Paragon", LatLng(13.7466, 100.5347)),
         PlaceholderPlace("CentralWorld", LatLng(13.7460, 100.5395)),
         PlaceholderPlace("Terminal 21", LatLng(13.7373, 100.5607))
@@ -135,6 +142,7 @@ object MockData {
 
     private val mutableMockRides = seedMockRides.toMutableList()
     private val ongoingRideKeyByUserId = buildInitialOngoingRideKeys().toMutableMap()
+    private val rideChatMessagesByRideKey = mutableMapOf<String, MutableList<MockChatMessage>>()
 
     val mockRides: List<MockRide>
         get() = mutableMockRides.toList()
@@ -208,6 +216,82 @@ object MockData {
         if (userId.isNullOrBlank()) return null
         val ongoingKey = ongoingRideKeyByUserId[userId] ?: return null
         return mutableMockRides.firstOrNull { ride -> rideKey(ride) == ongoingKey }
+    }
+
+    fun groupChatParticipantsForUser(userId: String?): List<MockUser> {
+        val ride = ongoingRideForUser(userId) ?: return emptyList()
+        return listOf(ride.host) + ride.passengers
+    }
+
+    fun groupChatMessagesForUser(userId: String?): List<MockChatMessage> {
+        if (userId.isNullOrBlank()) return emptyList()
+        val ride = ongoingRideForUser(userId) ?: return emptyList()
+        val key = rideKey(ride)
+        val existing = rideChatMessagesByRideKey[key]
+        if (existing != null) {
+            return existing.toList()
+        }
+
+        val initialMessages = mutableListOf<MockChatMessage>()
+        initialMessages += MockChatMessage(
+            senderUserId = "system",
+            senderDisplayName = "System",
+            message = "Group chat created for this ride.",
+            sentAtLabel = "Now"
+        )
+        initialMessages += MockChatMessage(
+            senderUserId = ride.host.id,
+            senderDisplayName = ride.host.name,
+            message = "Hi everyone, please be ready at ${ride.meetupLabel}.",
+            sentAtLabel = "Now"
+        )
+        val firstPassenger = ride.passengers.firstOrNull()
+        if (firstPassenger != null) {
+            initialMessages += MockChatMessage(
+                senderUserId = firstPassenger.id,
+                senderDisplayName = firstPassenger.name,
+                message = "Got it, I’m on the way!",
+                sentAtLabel = "Now"
+            )
+        }
+
+        rideChatMessagesByRideKey[key] = initialMessages
+        return initialMessages.toList()
+    }
+
+    fun sendGroupChatMessage(userId: String?, message: String): List<MockChatMessage> {
+        if (userId.isNullOrBlank()) return emptyList()
+        val ride = ongoingRideForUser(userId) ?: return emptyList()
+        val sender = findUser(userId) ?: return emptyList()
+        val normalizedMessage = message.trim()
+        if (normalizedMessage.isEmpty()) {
+            return groupChatMessagesForUser(userId)
+        }
+
+        val key = rideKey(ride)
+        val messages = rideChatMessagesByRideKey.getOrPut(key) {
+            groupChatMessagesForUser(userId).toMutableList()
+        }
+        messages += MockChatMessage(
+            senderUserId = sender.id,
+            senderDisplayName = sender.name,
+            message = normalizedMessage,
+            sentAtLabel = "Now"
+        )
+
+        val otherParticipants = (listOf(ride.host) + ride.passengers)
+            .filterNot { it.id == sender.id }
+        val responder = otherParticipants.firstOrNull()
+        if (responder != null) {
+            messages += MockChatMessage(
+                senderUserId = responder.id,
+                senderDisplayName = responder.name,
+                message = "Noted 👍",
+                sentAtLabel = "Now"
+            )
+        }
+
+        return messages.toList()
     }
 
     fun startOngoingRide(

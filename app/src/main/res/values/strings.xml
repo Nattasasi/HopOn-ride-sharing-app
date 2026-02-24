@@ -87,5 +87,10 @@
     <string name="ride_in_process_time_countdown_format">%1$s | %2$d min</string>
     <string name="ride_in_process_departing_now">Departing now</string>
     <string name="group_chat">Group Chat</string>
+    <string name="group_chat_back">Back to ride</string>
+    <string name="group_chat_placeholder">No messages yet</string>
+    <string name="group_chat_no_messages">No messages yet. Start the conversation.</string>
+    <string name="group_chat_input_placeholder">Type a message</string>
+    <string name="group_chat_send">Send message</string>
     <string name="cancel_ride">Cancel Ride</string>
 </resources>
