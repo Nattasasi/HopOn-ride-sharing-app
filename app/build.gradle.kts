@@ -5,9 +5,6 @@ val localProps = gradleLocalProperties(rootDir, providers)
 // Helper to safely read a property value by key.
 fun localProp(name: String): String? = localProps.getProperty(name)?.trim()
 
-// Controls whether debug/release builds use mock data mode.
-val useMockData = localProp("mockMode")?.toBooleanStrictOrNull() ?: false
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -30,9 +27,6 @@ android {
 
     buildTypes {
         debug {
-            // Expose mock/live mode into BuildConfig for app runtime checks.
-            buildConfigField("boolean", "USE_MOCK_DATA", useMockData.toString())
-
             // Inject API keys from local.properties into generated string resources.
             resValue(
                 "string",
@@ -46,9 +40,6 @@ android {
             )
         }
         release {
-            // Keep runtime behavior flag consistent with debug configuration.
-            buildConfigField("boolean", "USE_MOCK_DATA", useMockData.toString())
-
             // Provide production build with the same key injection source.
             resValue(
                 "string",

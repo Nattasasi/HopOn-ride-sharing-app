@@ -116,7 +116,7 @@ fun rideResultCard(
                             fontSize = 17.sp,
                             lineHeight = 20.sp,
                             color = Color.Black,
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

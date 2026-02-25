@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">RideSharing</string>
+    <string name="app_name">Hop-On</string>
     <string name="enable_gps">Enable GPS</string>
     <string name="required_for_this_app">Required for this app</string>
     <string name="enable_now">Enable now</string>
@@ -46,6 +46,16 @@
     <string name="history_route_format">%1$s to %2$s</string>
     <string name="nav_profile">Profile</string>
     <string name="profile_title">Profile</string>
+    <string name="profile_setting_title">Profile Setting</string>
+    <string name="profile_member_since">Member since</string>
+    <string name="profile_account_section">Account</string>
+    <string name="profile_personal_information">Personal information</string>
+    <string name="profile_verification_safety">Verification &amp; Safety</string>
+    <string name="profile_preferences">Preferences</string>
+    <string name="profile_ride_details_section">Ride Details</string>
+    <string name="profile_schedule_route_info">Schedule &amp; Route Info</string>
+    <string name="profile_payment_cost">Payment &amp; Cost</string>
+    <string name="profile_rating_reviews">Rating &amp; Reviews</string>
     <string name="logout">Log out</string>
     <string name="login_title">Welcome to HopOn</string>
     <string name="email">Email</string>
@@ -93,4 +103,8 @@
     <string name="group_chat_input_placeholder">Type a message</string>
     <string name="group_chat_send">Send message</string>
     <string name="cancel_ride">Cancel Ride</string>
+    <string name="cancel_ride_confirm_title">Cancel this ride?</string>
+    <string name="cancel_ride_confirm_message">Are you sure you want to cancel this ongoing ride?</string>
+    <string name="cancel_ride_success">Ride canceled</string>
+    <string name="go_back">GO BACK</string>
 </resources>

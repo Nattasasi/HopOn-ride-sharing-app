@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTextAppearance" parent="TextAppearance.MaterialComponents.Body1">
+        <item name="android:fontFamily">@font/urbanist</item>
+        <item name="fontFamily">@font/urbanist</item>
+    </style>
+
+    <style name="AppTextViewStyle">
+        <item name="android:textAppearance">@style/AppTextAppearance</item>
+    </style>
+</resources>

@@ -18,10 +18,13 @@ import android.transition.TransitionManager
 import android.util.Log
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
@@ -50,11 +53,11 @@ import com.google.android.gms.maps.model.Polyline
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.model.AutocompletePrediction
-import com.tritech.hopon.BuildConfig
 import com.tritech.hopon.R
 import com.tritech.hopon.data.network.NetworkService
 import com.tritech.hopon.databinding.ActivityMapsBinding
 import com.tritech.hopon.ui.auth.LoginActivity
+import com.tritech.hopon.ui.components.hopOnComposeTheme
 import com.tritech.hopon.ui.rideDiscovery.components.MapsBottomNavAction
 import com.tritech.hopon.ui.rideDiscovery.components.MapsBottomNavItem
 import com.tritech.hopon.ui.rideDiscovery.components.mainMapHost
@@ -83,6 +86,14 @@ import java.util.Locale
 
 class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
+    private fun ComposeView.setHopOnContent(content: @Composable () -> Unit) {
+        setContent {
+            hopOnComposeTheme {
+                content()
+            }
+        }
+    }
+
     private enum class CreateRideLocationField {
         MEETUP,
         DESTINATION
@@ -95,6 +106,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         private const val EXTRA_OPEN_RIDE_IN_PROCESS = "extra_open_ride_in_process"
         private const val RIDE_ONGOING_CHANNEL_ID = "ride_ongoing_channel"
         private const val RIDE_ONGOING_NOTIFICATION_ID = 9001
+        private const val ARRIVAL_RADIUS_METERS = 100f
     }
 
     private lateinit var binding: ActivityMapsBinding
@@ -113,16 +125,13 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var pickUpLatLng: LatLng? = null
     private var dropLatLng: LatLng? = null
 
-    // Mock current location: Assumption University Thailand (13.7370, 100.6270)
-    private val mockCurrentLocation = LatLng(13.7370, 100.6270)
+    // Default current location: Assumption University Thailand (13.7370, 100.6270)
+    private val defaultCurrentLocation = LatLng(13.7370, 100.6270)
 
     private var destinationMarker: Marker? = null
     private var originMarker: Marker? = null
     private var greyPolyLine: Polyline? = null
     private var blackPolyline: Polyline? = null
-    private var previousLatLngFromServer: LatLng? = null
-    private var currentLatLngFromServer: LatLng? = null
-    private var movingCabMarker: Marker? = null
     private var meetupMarkerController: MeetupMarkerController? = null
     private val searchDebounceHandler = Handler(Looper.getMainLooper())
     private var pendingSearchRunnable: Runnable? = null
@@ -167,10 +176,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var pickupRoutePolyline: Polyline? = null
     private var rideRoutePoints by mutableStateOf<List<LatLng>>(emptyList())
     private var pickupRoutePoints by mutableStateOf<List<LatLng>>(emptyList())
+    private var hasLocallyDetectedTripEnd = false
     private val meetupPinSizePx = 94
     private val meetupPinSelectedSizePx = 112
-
-    private var placeholderPlaceIndex = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -235,20 +243,17 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         ensureRideOngoingNotificationChannel()
         setUpMainMapCompose()
 
-        // Live mode initializes Places API client + websocket presenter.
-        if (!BuildConfig.USE_MOCK_DATA) {
-            if (!Places.isInitialized()) {
-                Places.initialize(applicationContext, getString(R.string.google_maps_key))
-            }
-            placesSearchDataSource = PlacesSearchDataSource(Places.createClient(this))
-            presenter = MapsPresenter(NetworkService())
-            presenter?.onAttach(this)
+        if (!Places.isInitialized()) {
+            Places.initialize(applicationContext, getString(R.string.google_maps_key))
         }
+        placesSearchDataSource = PlacesSearchDataSource(Places.createClient(this))
+        presenter = MapsPresenter(NetworkService())
+        presenter?.onAttach(this)
 
         // Initialize to Assumption University as default for testing on emulator without GPS.
         // Real location provider will override this if a valid location is obtained.
-        currentLatLng = mockCurrentLocation
-        pickUpLatLng = mockCurrentLocation
+        currentLatLng = defaultCurrentLocation
+        pickUpLatLng = defaultCurrentLocation
 
         setUpClickListener()
         handleNavigationIntent(intent)
@@ -284,7 +289,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.mapCompose.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.mapCompose.setContent {
+        binding.mapCompose.setHopOnContent {
             mainMapHost(onMapReady = ::onMapReady)
         }
     }
@@ -301,7 +306,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridesBottomSheetCard.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.ridesBottomSheetCard.setContent {
+        binding.ridesBottomSheetCard.setHopOnContent {
             mapHomeRideResultsScreen(
                 visible = isRidePanelVisible,
                 expanded = isRidePanelExpanded,
@@ -322,7 +327,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.predictionsCompose.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.predictionsCompose.setContent {
+        binding.predictionsCompose.setHopOnContent {
             mapHomePredictionsScreen(
                 predictions = latestPredictions,
                 showEmptyState = showEmptyPredictions,
@@ -335,7 +340,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.historyContent.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.historyContent.setContent {
+        binding.historyContent.setHopOnContent {
             historyRidesScreen(
                 rides = historyRideItems,
                 currentUserName = resolveCurrentUserDisplayName(),
@@ -348,7 +353,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideDetailContent.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.rideDetailContent.setContent {
+        binding.rideDetailContent.setHopOnContent {
             val ride = selectedHistoryRide
             if (ride != null) {
                 rideDetailScreen(
@@ -376,9 +381,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.profileContent.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.profileContent.setContent {
+        binding.profileContent.setHopOnContent {
             profileScreen(
-                userName = getString(R.string.me_label),
+                userName = resolveCurrentUserDisplayName(),
                 onLogoutClick = ::logoutAndNavigateToLogin
             )
         }
@@ -393,7 +398,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideInProcessContent.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.rideInProcessContent.setContent {
+        binding.rideInProcessContent.setHopOnContent {
             val currentUserId = SessionManager.getCurrentUserId(this)
             val ongoingRide = MockData.ongoingRideForUser(currentUserId)
             rideInProcessScreen(
@@ -410,16 +415,51 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 pickupRoutePoints = pickupRoutePoints,
                 rideRoutePoints = rideRoutePoints,
                 onGroupChatClick = ::showGroupChatContent,
+                onCancelRideClick = ::showCancelRideConfirmation,
                 onBackClick = ::showHistoryContent
             )
         }
+    }
+
+    private fun showCancelRideConfirmation() {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.cancel_ride_confirm_title))
+            .setMessage(getString(R.string.cancel_ride_confirm_message))
+            .setNegativeButton(getString(R.string.go_back)) { _, _ -> }
+            .setPositiveButton(R.string.cancel_ride) { _, _ ->
+                cancelCurrentOngoingRide()
+            }
+            .show()
+
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            ?.setTextColor(ContextCompat.getColor(this, R.color.cancelRideRed))
+    }
+
+    private fun cancelCurrentOngoingRide() {
+        val currentUserId = SessionManager.getCurrentUserId(this)
+        val canceled = MockData.cancelOngoingRide(currentUserId)
+        if (!canceled) {
+            Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        NotificationManagerCompat.from(this).cancel(RIDE_ONGOING_NOTIFICATION_ID)
+        pickupRoutePoints = emptyList()
+        rideRoutePoints = emptyList()
+        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
+            context = this,
+            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
+        )
+        selectedBottomNavItem = MapsBottomNavItem.RIDES
+        showHistoryContent()
+        Toast.makeText(this, getString(R.string.cancel_ride_success), Toast.LENGTH_SHORT).show()
     }
 
     private fun setUpGroupChatCompose() {
         binding.groupChatContent.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.groupChatContent.setContent {
+        binding.groupChatContent.setHopOnContent {
             groupChatScreen(
                 currentUserId = SessionManager.getCurrentUserId(this),
                 participants = groupChatParticipants,
@@ -439,7 +479,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.createRideContent.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.createRideContent.setContent {
+        binding.createRideContent.setHopOnContent {
             createRideScreen(
                 initialMeetupLocation = createRideInitialMeetupLocation,
                 initialMeetupLatLng = createRideInitialMeetupLatLng,
@@ -472,14 +512,14 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.searchBarContainer.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.searchBarContainer.setContent {
+        binding.searchBarContainer.setHopOnContent {
             mapHomeSearchBarScreen(
                 query = searchQuery,
                 requestFocus = shouldRequestSearchFocus,
                 onFocusHandled = { shouldRequestSearchFocus = false },
                 clearFocusSignal = clearSearchFocusSignal,
                 onFocusChanged = { hasFocus ->
-                    if (hasFocus && !BuildConfig.USE_MOCK_DATA) {
+                    if (hasFocus) {
                         activateInlineSearchMode()
                     }
                 },
@@ -491,11 +531,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     handleSearchAction()
                 },
                 onClick = {
-                    if (BuildConfig.USE_MOCK_DATA) {
-                        applyPlaceholderPlaceSelection()
-                    } else {
-                        activateInlineSearchMode()
-                    }
+                    activateInlineSearchMode()
                 }
             )
         }
@@ -706,10 +742,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun handleSearchQueryChange(query: String) {
-        if (BuildConfig.USE_MOCK_DATA) {
-            return
-        }
-
         clearSelectedMeetupMarker()
 
         if (!searchUiCoordinator.isSearchBarAtTop()) {
@@ -739,7 +771,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.createRideButton.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.createRideButton.setContent {
+        binding.createRideButton.setHopOnContent {
             mapHomePrimaryActionButton(
                 selectedRide = selectedRide,
                 onCreateRideClick = ::handleCreateRideClick,
@@ -752,7 +784,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.bottomNav.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-        binding.bottomNav.setContent {
+        binding.bottomNav.setHopOnContent {
             mapHomeBottomNavigationScreen(
                 selectedItem = selectedBottomNavItem,
                 onItemSelected = ::handleBottomNavSelection
@@ -806,6 +838,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
+        binding.bottomNav.visibility = View.VISIBLE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
         binding.mapTouchOverlay.visibility = View.GONE
@@ -828,6 +861,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.VISIBLE
         binding.predictionsCard.visibility = View.GONE
         if (isRidePanelVisible) {
@@ -856,6 +890,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -882,6 +917,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -901,12 +937,14 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isGroupChatVisible = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
+        hasLocallyDetectedTripEnd = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.VISIBLE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -989,6 +1027,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.VISIBLE
         binding.groupChatContent.visibility = View.GONE
+        binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -1023,6 +1062,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideInProcessContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.VISIBLE
+        binding.bottomNav.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
         binding.ridesBottomSheetCard.visibility = View.GONE
@@ -1067,7 +1107,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 meetupDateTimeLabel = createdRide.meetupDateTimeLabel,
                 hostName = createdRide.host.name
             )
-            if (isStartedAsOngoing && !BuildConfig.USE_MOCK_DATA) {
+            if (isStartedAsOngoing) {
                 sendRideOngoingNotification()
             }
         }
@@ -1163,11 +1203,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         }
 
         activeCreateRideField = field
-        if (BuildConfig.USE_MOCK_DATA) {
-            clearCreateRidePredictions()
-            return
-        }
-
         val query = getCreateRideQuery(field).trim()
         if (query.length >= 2) {
             scheduleCreateRidePredictionFetch(field, query)
@@ -1199,11 +1234,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         setCreateRideLatLng(field, null)
         activeCreateRideField = field
 
-        if (BuildConfig.USE_MOCK_DATA) {
-            clearCreateRidePredictions()
-            return
-        }
-
         val trimmedQuery = query.trim()
         if (trimmedQuery.length < 2) {
             clearCreateRidePredictions()
@@ -1215,10 +1245,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun handleCreateRideSearchAction(field: CreateRideLocationField) {
         activeCreateRideField = field
-        if (BuildConfig.USE_MOCK_DATA) {
-            return
-        }
-
         val query = getCreateRideQuery(field).trim()
         if (query.isEmpty()) {
             return
@@ -1413,11 +1439,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun handleSearchAction() {
-        if (BuildConfig.USE_MOCK_DATA) {
-            applyPlaceholderPlaceSelection()
-            return
-        }
-
         val query = searchQuery.trim()
         if (query.isEmpty()) {
             return
@@ -1509,13 +1530,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         )
     }
 
-    private fun applyPlaceholderPlaceSelection() {
-        val place = MockData.placeholderPlaces[placeholderPlaceIndex % MockData.placeholderPlaces.size]
-        placeholderPlaceIndex++
-
-        applySelectedPlace(place.name, place.latLng)
-    }
-
     private fun applySelectedPlace(name: String, latLng: LatLng) {
         // Update selected destination in UI and map state.
         dropLatLng = latLng
@@ -1589,6 +1603,28 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         return result[0]
     }
 
+    private fun resolveActiveRideDestination(): LatLng? {
+        val currentUserId = SessionManager.getCurrentUserId(this)
+        return MockData.ongoingRideForUser(currentUserId)?.destinationLatLng
+    }
+
+    private fun maybeHandleLocalTripArrival(currentLocation: LatLng) {
+        if (!isRideInProcessVisible || hasLocallyDetectedTripEnd) {
+            return
+        }
+
+        val destination = resolveActiveRideDestination() ?: return
+        val distanceToDestinationMeters = calculateDistanceMeters(currentLocation, destination)
+        Log.d(
+            TAG,
+            "localArrivalCheck distance=${distanceToDestinationMeters.toInt()}m current=${currentLocation.latitude},${currentLocation.longitude} destination=${destination.latitude},${destination.longitude}"
+        )
+        if (distanceToDestinationMeters <= ARRIVAL_RADIUS_METERS) {
+            hasLocallyDetectedTripEnd = true
+            informTripEnd()
+        }
+    }
+
     private fun moveCamera(latLng: LatLng) {
         googleMap.moveCamera(CameraUpdateFactory.newLatLng(latLng))
     }
@@ -1650,25 +1686,21 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             override fun onLocationResult(locationResult: LocationResult) {
                 super.onLocationResult(locationResult)
 
-                // Skip location updates in mock mode (use pre-set mock location instead).
-                if (BuildConfig.USE_MOCK_DATA) {
-                    return
-                }
-
-                // In live mode, allow real location to override the default Assumption University.
-                // Lock after first non-default location is obtained.
-                if (currentLatLng != mockCurrentLocation && currentLatLng != null) {
-                    return
-                }
-
                 for (location in locationResult.locations) {
-                    if (currentLatLng == mockCurrentLocation || currentLatLng == null) {
-                        currentLatLng = LatLng(location.latitude, location.longitude)
+                    val latestLatLng = LatLng(location.latitude, location.longitude)
+                    val isFirstFix = currentLatLng == null || currentLatLng == defaultCurrentLocation
+                    currentLatLng = latestLatLng
+
+                    if (isFirstFix || pickUpLatLng == null) {
                         setCurrentLocationAsPickUp()
                         enableMyLocationOnMap()
                         moveCamera(currentLatLng!!)
                         animateCamera(currentLatLng!!)
+                    } else if (isRideInProcessVisible && isMapReady) {
+                        animateCamera(latestLatLng)
                     }
+
+                    maybeHandleLocalTripArrival(latestLatLng)
                 }
             }
         }
@@ -1695,8 +1727,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         clearSearchFocus()
         moveSearchBarToBottom()
 
-        previousLatLngFromServer = null
-        currentLatLngFromServer = null
+        hasLocallyDetectedTripEnd = false
 
         if (currentLatLng != null) {
             moveCamera(currentLatLng!!)
@@ -1704,7 +1735,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             setCurrentLocationAsPickUp()
         }
 
-        movingCabMarker?.remove()
         greyPolyLine?.remove()
         blackPolyline?.remove()
         originMarker?.remove()
@@ -1715,7 +1745,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         blackPolyline = null
         originMarker = null
         destinationMarker = null
-        movingCabMarker = null
         clearCreateRidePredictions()
         activeCreateRideField = null
     }
@@ -1723,26 +1752,22 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     override fun onStart() {
         super.onStart()
 
-        // Request permission/GPS if needed, then start location updates.
-        // In mock mode, location is already set; in live mode, initialize from provider.
-        if (!BuildConfig.USE_MOCK_DATA) {
-            when {
-                PermissionUtils.isAccessFineLocationGranted(this) -> {
-                    when {
-                        PermissionUtils.isLocationEnabled(this) -> {
-                            setUpLocationListener()
-                        }
-                        else -> {
-                            PermissionUtils.showGPSNotEnabledDialog(this)
-                        }
+        when {
+            PermissionUtils.isAccessFineLocationGranted(this) -> {
+                when {
+                    PermissionUtils.isLocationEnabled(this) -> {
+                        setUpLocationListener()
+                    }
+                    else -> {
+                        PermissionUtils.showGPSNotEnabledDialog(this)
                     }
                 }
-                else -> {
-                    PermissionUtils.requestAccessFineLocationPermission(
-                        this,
-                        LOCATION_PERMISSION_REQUEST_CODE
-                    )
-                }
+            }
+            else -> {
+                PermissionUtils.requestAccessFineLocationPermission(
+                    this,
+                    LOCATION_PERMISSION_REQUEST_CODE
+                )
             }
         }
     }
@@ -1881,41 +1906,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         polylineAnimator.start()
     }
 
-    override fun updateCabLocation(latLng: LatLng) {
-        // Animate vehicle marker from previous server location to latest location.
-        if (movingCabMarker == null) {
-            movingCabMarker = addCarMarkerAndGet(latLng)
-        }
-        if (previousLatLngFromServer == null) {
-            currentLatLngFromServer = latLng
-            previousLatLngFromServer = currentLatLngFromServer
-            movingCabMarker?.position = currentLatLngFromServer!!
-            movingCabMarker?.setAnchor(0.5f, 0.5f)
-            animateCamera(currentLatLngFromServer!!)
-        } else {
-            previousLatLngFromServer = currentLatLngFromServer
-            currentLatLngFromServer = latLng
-            val valueAnimator = AnimationUtils.cabAnimator()
-            valueAnimator.addUpdateListener { va ->
-                if (currentLatLngFromServer != null && previousLatLngFromServer != null) {
-                    val multiplier = va.animatedFraction
-                    val nextLocation = LatLng(
-                        multiplier * currentLatLngFromServer!!.latitude + (1 - multiplier) * previousLatLngFromServer!!.latitude,
-                        multiplier * currentLatLngFromServer!!.longitude + (1 - multiplier) * previousLatLngFromServer!!.longitude
-                    )
-                    movingCabMarker?.position = nextLocation
-                    movingCabMarker?.setAnchor(0.5f, 0.5f)
-                    val rotation = MapUtils.getRotation(previousLatLngFromServer!!, nextLocation)
-                    if (!rotation.isNaN()) {
-                        movingCabMarker?.rotation = rotation
-                    }
-                    animateCamera(nextLocation)
-                }
-            }
-            valueAnimator.start()
-        }
-    }
-
     override fun informCabIsArriving() {
         Toast.makeText(this, getString(R.string.your_cab_is_arriving), Toast.LENGTH_SHORT).show()
     }
@@ -1929,6 +1919,13 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     override fun informTripEnd() {
+        hasLocallyDetectedTripEnd = true
+        val currentUserId = SessionManager.getCurrentUserId(this)
+        MockData.completeOngoingRide(currentUserId)
+        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
+            context = this,
+            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
+        )
         Toast.makeText(this, getString(R.string.trip_end), Toast.LENGTH_SHORT).show()
         reset()
     }

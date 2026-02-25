@@ -30,15 +30,6 @@ class MapsPresenter(private val networkService: NetworkService) : WebSocketListe
         view = null
     }
 
-    fun requestNearbyCabs(latLng: LatLng) {
-        // Ask backend for nearby cabs around current pickup location.
-        val jsonObject = JSONObject()
-        jsonObject.put(Constants.TYPE, Constants.NEAR_BY_CABS)
-        jsonObject.put(Constants.LAT, latLng.latitude)
-        jsonObject.put(Constants.LNG, latLng.longitude)
-        webSocket.sendMessage(jsonObject.toString())
-    }
-
     fun requestCab(pickUpLatLng: LatLng, dropLatLng: LatLng) {
         // Send a booking request with pickup and destination coordinates.
         val jsonObject = JSONObject()
@@ -50,10 +41,6 @@ class MapsPresenter(private val networkService: NetworkService) : WebSocketListe
         webSocket.sendMessage(jsonObject.toString())
     }
 
-    private fun handleOnMessageNearbyCabs(jsonObject: JSONObject) {
-        // Nearby cabs message received but not displayed in current implementation.
-    }
-
     override fun onConnect() {
         Log.d(TAG, "onConnect")
     }
@@ -63,9 +50,6 @@ class MapsPresenter(private val networkService: NetworkService) : WebSocketListe
         val jsonObject = JSONObject(data)
         // Route each socket event type to the appropriate view action.
         when (jsonObject.getString(Constants.TYPE)) {
-            Constants.NEAR_BY_CABS -> {
-                handleOnMessageNearbyCabs(jsonObject)
-            }
             Constants.CAB_BOOKED -> {
                 view?.informCabBooked()
             }
@@ -79,11 +63,6 @@ class MapsPresenter(private val networkService: NetworkService) : WebSocketListe
                     pickUpPath.add(latLng)
                 }
                 view?.showPath(pickUpPath)
-            }
-            Constants.LOCATION -> {
-                val latCurrent = jsonObject.getDouble("lat")
-                val lngCurrent = jsonObject.getDouble("lng")
-                view?.updateCabLocation(LatLng(latCurrent, lngCurrent))
             }
             Constants.CAB_IS_ARRIVING -> {
                 view?.informCabIsArriving()

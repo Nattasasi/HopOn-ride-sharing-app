@@ -10,8 +10,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,10 +24,6 @@ fun hopOnButton(
     containerColor: Color = colorResource(id = R.color.colorPrimary),
     disabledContainerColor: Color = colorResource(id = R.color.colorPrimaryDark)
 ) {
-    val urbanistSemiBold = FontFamily(
-        Font(R.font.urbanist_semibold, FontWeight.SemiBold)
-    )
-
     Button(
         onClick = onClick,
         modifier = modifier,
@@ -49,7 +43,7 @@ fun hopOnButton(
         Text(
             text = text,
             style = TextStyle(
-                fontFamily = urbanistSemiBold,
+                fontFamily = hopOnFontFamily,
                 fontSize = 23.sp,
                 fontWeight = FontWeight.SemiBold
             )

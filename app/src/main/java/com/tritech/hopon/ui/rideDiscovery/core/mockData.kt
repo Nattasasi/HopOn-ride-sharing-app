@@ -218,6 +218,32 @@ object MockData {
         return mutableMockRides.firstOrNull { ride -> rideKey(ride) == ongoingKey }
     }
 
+    fun cancelOngoingRide(userId: String?): Boolean {
+        if (userId.isNullOrBlank()) return false
+        val removedRideKey = ongoingRideKeyByUserId.remove(userId) ?: return false
+        rideChatMessagesByRideKey.remove(removedRideKey)
+        return true
+    }
+
+    fun completeOngoingRide(userId: String?, rideTimeMinutes: Int = 20): Boolean {
+        if (userId.isNullOrBlank()) return false
+        val ongoingKey = ongoingRideKeyByUserId[userId] ?: return false
+        val index = mutableMockRides.indexOfFirst { ride -> rideKey(ride) == ongoingKey }
+        if (index == -1) {
+            ongoingRideKeyByUserId.remove(userId)
+            return false
+        }
+
+        val ride = mutableMockRides[index]
+        mutableMockRides[index] = ride.copy(
+            isCompleted = true,
+            rideTimeMinutes = ride.rideTimeMinutes ?: rideTimeMinutes
+        )
+        ongoingRideKeyByUserId.remove(userId)
+        rideChatMessagesByRideKey.remove(ongoingKey)
+        return true
+    }
+
     fun groupChatParticipantsForUser(userId: String?): List<MockUser> {
         val ride = ongoingRideForUser(userId) ?: return emptyList()
         return listOf(ride.host) + ride.passengers

@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -62,8 +63,7 @@ fun groupChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .imePadding(),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.Top
     ) {
         Row(
@@ -171,12 +171,21 @@ fun groupChatScreen(
             }
         }
 
-        val imeVisible = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+        val density = LocalDensity.current
+        val imeBottomPx = WindowInsets.ime.getBottom(density)
+        val navBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+        val imeVisible = imeBottomPx > 0
+        val composerBottomPadding = with(density) {
+            (imeBottomPx - navBarBottomPx).coerceAtLeast(0).toDp()
+        }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = if (imeVisible) 8.dp else 12.dp),
+                .padding(
+                    top = if (imeVisible) 8.dp else 12.dp,
+                    bottom = composerBottomPadding
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {

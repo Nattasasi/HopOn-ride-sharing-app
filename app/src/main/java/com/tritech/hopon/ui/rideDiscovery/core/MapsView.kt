@@ -10,9 +10,6 @@ interface MapsView {
     // Draw path polyline for pickup/trip route.
     fun showPath(latLngList: List<LatLng>)
 
-    // Animate moving cab marker to latest server location.
-    fun updateCabLocation(latLng: LatLng)
-
     // Notify user that cab is close to pickup point.
     fun informCabIsArriving()
 

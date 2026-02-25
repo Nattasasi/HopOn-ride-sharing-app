@@ -20,13 +20,7 @@ Add both to `local.properties` (do not commit this file):
 sdk.dir=/PATH/TO/ANDROID/SDK
 apiKey=YOUR_ANDROID_MAPS_KEY
 routesApiKey=YOUR_ROUTES_KEY
-mockMode=true
 ```
-
-`mockMode` controls frontend data source on the map screen:
-
-- `true`: uses placeholder places and mock nearby cab data (no Places/API dependency for UI development)
-- `false`: uses real Places autocomplete and simulator websocket flow
 
 ### Required APIs in Google Cloud Console
 

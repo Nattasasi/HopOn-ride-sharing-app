@@ -1,6 +1,5 @@
 package com.tritech.hopon.ui.navigation
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -13,6 +12,7 @@ import com.google.android.libraries.navigation.Navigator
 import com.google.android.libraries.navigation.Waypoint
 import com.tritech.hopon.R
 import com.tritech.hopon.ui.auth.LoginActivity
+import com.tritech.hopon.ui.components.hopOnComposeTheme
 import com.tritech.hopon.utils.SessionManager
 
 class NavigationActivity : AppCompatActivity() {
@@ -22,16 +22,6 @@ class NavigationActivity : AppCompatActivity() {
         private const val EXTRA_ORIGIN_LNG = "extra_origin_lng"
         private const val EXTRA_DEST_LAT = "extra_dest_lat"
         private const val EXTRA_DEST_LNG = "extra_dest_lng"
-
-        // Factory intent carrying origin/destination coordinates for turn-by-turn guidance.
-        fun createIntent(context: Context, origin: LatLng, destination: LatLng): Intent {
-            return Intent(context, NavigationActivity::class.java).apply {
-                putExtra(EXTRA_ORIGIN_LAT, origin.latitude)
-                putExtra(EXTRA_ORIGIN_LNG, origin.longitude)
-                putExtra(EXTRA_DEST_LAT, destination.latitude)
-                putExtra(EXTRA_DEST_LNG, destination.longitude)
-            }
-        }
     }
 
     private lateinit var navigationView: NavigationView
@@ -48,12 +38,14 @@ class NavigationActivity : AppCompatActivity() {
         }
 
         setContent {
-            navigationScreen(
-                savedInstanceState = savedInstanceState,
-                onViewReady = { view ->
-                    navigationView = view
-                }
-            )
+            hopOnComposeTheme {
+                navigationScreen(
+                    savedInstanceState = savedInstanceState,
+                    onViewReady = { view ->
+                        navigationView = view
+                    }
+                )
+            }
         }
 
         // Acquire navigator instance asynchronously, then start guidance.

@@ -16,6 +16,8 @@
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorPrimary</item>
+        <item name="android:textViewStyle">@style/AppTextViewStyle</item>
+        <item name="textAppearanceBody1">@style/AppTextAppearance</item>
     </style>
 
 </resources>

@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import com.tritech.hopon.R
+import com.tritech.hopon.ui.components.hopOnComposeTheme
 import com.tritech.hopon.ui.rideDiscovery.screen.RootHostActivity
 import com.tritech.hopon.utils.SessionManager
 import java.util.Locale
@@ -22,11 +23,13 @@ class LoginActivity : AppCompatActivity() {
         }
 
         setContent {
-            loginScreen(
-                onLogin = { email, password ->
-                    handleLogin(email, password)
-                }
-            )
+            hopOnComposeTheme {
+                loginScreen(
+                    onLogin = { email, password ->
+                        handleLogin(email, password)
+                    }
+                )
+            }
         }
     }
 
