@@ -48,7 +48,6 @@ fun profileScreen(
 ) {
     val primary = colorResource(id = R.color.colorPrimary)
     val gray = colorResource(id = R.color.colorPrimaryDark)
-    val historySectionTitleStyle = MaterialTheme.typography.titleMedium
 
     Column(
         modifier = Modifier
@@ -95,7 +94,7 @@ fun profileScreen(
 
         Text(
             text = stringResource(id = R.string.profile_account_section),
-            style = historySectionTitleStyle,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = gray,
             modifier = Modifier.padding(top = 24.dp)
@@ -119,7 +118,7 @@ fun profileScreen(
 
         Text(
             text = stringResource(id = R.string.profile_ride_details_section),
-            style = historySectionTitleStyle,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = gray,
             modifier = Modifier.padding(top = 22.dp)
@@ -168,8 +167,6 @@ private fun settingGroupCard(
     secondaryTint: Color,
     modifier: Modifier = Modifier
 ) {
-    val historySectionTitleStyle = MaterialTheme.typography.titleMedium
-
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -197,7 +194,7 @@ private fun settingGroupCard(
                 Text(
                     text = row.label,
                     color = Color.Black,
-                    style = historySectionTitleStyle,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )

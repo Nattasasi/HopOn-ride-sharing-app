@@ -78,7 +78,14 @@
     <string name="create_ride_vehicle_label">Vehicle information</string>
     <string name="create_ride_contact_label">Contact information</string>
     <string name="create_ride_notes_label">Additional notes</string>
+    <string name="create_ride_notes_short_label">Notes</string>
     <string name="create_ride_action">Create ride</string>
+    <string name="create_ride_today_label">Today</string>
+    <string name="create_ride_default_time_label">4:00 PM</string>
+    <string name="create_ride_default_wait_time">10</string>
+    <string name="create_ride_wait_time_compact">%1$s min</string>
+    <string name="create_ride_wait_min_suffix">min</string>
+    <string name="contact_label">Contact</string>
     <string name="default_vehicle_info">Default</string>
     <string name="default_contact_info">Default</string>
     <string name="one_ongoing_ride_only">You can only have one ongoing ride at a time</string>

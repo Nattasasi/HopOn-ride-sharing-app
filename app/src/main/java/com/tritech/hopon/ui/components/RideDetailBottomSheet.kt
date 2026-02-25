@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -37,7 +38,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.tritech.hopon.R
 import com.tritech.hopon.ui.rideDiscovery.core.RideDateTimeFormatter
 import java.util.Locale
@@ -115,12 +115,12 @@ fun rideDetailBottomSheet(
                 ) {
                     Text(
                         text = stringResource(id = R.string.meetup_location_label),
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         color = Color.Gray
                     )
                     Text(
                         text = meetupLabel,
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Normal,
                         color = Color.Black,
                         maxLines = 1,
@@ -183,12 +183,12 @@ fun rideDetailBottomSheet(
                 ) {
                     Text(
                         text = stringResource(id = R.string.destination_label),
-                        fontSize = 14.sp,
+                        style = MaterialTheme.typography.titleSmall,
                         color = Color.Gray
                     )
                     Text(
                         text = destinationLabel,
-                        fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Normal,
                         color = Color.Black,
                         maxLines = 1,
@@ -264,7 +264,7 @@ fun rideDetailBottomSheet(
                     ) {
                         Text(
                             text = stringResource(id = R.string.host_label),
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.titleSmall,
                             color = Color.Gray
                         )
                         Row(
@@ -282,7 +282,7 @@ fun rideDetailBottomSheet(
                             ) {
                                 Text(
                                     text = displayedHostName,
-                                    fontSize = 18.sp,
+                                    style = MaterialTheme.typography.titleMedium,
                                     color = colorResource(id = R.color.colorPrimaryDark),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -302,7 +302,7 @@ fun rideDetailBottomSheet(
                                             id = R.string.rating_out_of_five,
                                             hostRating
                                         ),
-                                        fontSize = 16.sp,
+                                        style = MaterialTheme.typography.titleMedium,
                                         color = Color.Gray
                                     )
                                 }
@@ -316,12 +316,12 @@ fun rideDetailBottomSheet(
                     ) {
                         Text(
                             text = stringResource(id = R.string.vehicle_label),
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.titleSmall,
                             color = Color.Gray
                         )
                         Text(
                             text = hostVehicleType,
-                            fontSize = 18.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             color = colorResource(id = R.color.colorPrimaryDark),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -342,7 +342,7 @@ fun rideDetailBottomSheet(
                                     peopleCount,
                                     maxPeopleCount
                                 ),
-                                fontSize = 16.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = Color.Gray
                             )
                         }
@@ -367,7 +367,7 @@ private fun rideDetailInfoCell(
         icon()
         Text(
             text = text,
-            fontSize = 15.sp,
+            style = MaterialTheme.typography.bodyLarge,
             color = Color.DarkGray,
             maxLines = 1,
             modifier = Modifier.padding(start = 6.dp)

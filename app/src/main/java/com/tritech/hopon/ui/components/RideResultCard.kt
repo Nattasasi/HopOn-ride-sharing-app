@@ -1,6 +1,5 @@
 package com.tritech.hopon.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,7 +33,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.tritech.hopon.R
 import com.tritech.hopon.ui.rideDiscovery.core.RideDateTimeFormatter
 import com.tritech.hopon.ui.rideDiscovery.core.RideParticipationRole
@@ -113,8 +111,8 @@ fun rideResultCard(
                         )
                         Text(
                             text = meetupLabel,
-                            fontSize = 17.sp,
-                            lineHeight = 20.sp,
+                            style = MaterialTheme.typography.titleMedium,
+                            lineHeight = MaterialTheme.typography.titleMedium.lineHeight,
                             color = Color.Black,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -227,17 +225,10 @@ private fun rideRoleBadge(role: RideParticipationRole) {
         RideParticipationRole.HOSTED -> stringResource(id = R.string.ride_role_hosted)
     }
 
-    Text(
+    statusBadge(
         text = roleText,
-        color = roleTextColor(roleColor),
-        fontSize = 12.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .background(
-                color = roleColor.copy(alpha = RideRoleBadgeBackgroundAlpha),
-                shape = MaterialTheme.shapes.small
-            )
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+        backgroundColor = roleColor.copy(alpha = RideRoleBadgeBackgroundAlpha),
+        textColor = roleTextColor(roleColor)
     )
 }
 
@@ -261,7 +252,7 @@ private fun compactInfoCell(
         icon()
         Text(
             text = text,
-            fontSize = 16.sp,
+            style = MaterialTheme.typography.titleMedium,
             color = Color.DarkGray,
             maxLines = 1
         )
@@ -282,7 +273,7 @@ private fun infoCell(
         icon()
         Text(
             text = text,
-            fontSize = 16.sp,
+            style = MaterialTheme.typography.titleMedium,
             color = Color.DarkGray,
             maxLines = 1,
             textAlign = TextAlign.Center,

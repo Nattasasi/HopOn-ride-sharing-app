@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import com.tritech.hopon.R
 
 val hopOnFontFamily = FontFamily(
@@ -21,16 +22,16 @@ private val hopOnTypography = Typography(
     displaySmall = Typography().displaySmall.copy(fontFamily = hopOnFontFamily),
     headlineLarge = Typography().headlineLarge.copy(fontFamily = hopOnFontFamily),
     headlineMedium = Typography().headlineMedium.copy(fontFamily = hopOnFontFamily),
-    headlineSmall = Typography().headlineSmall.copy(fontFamily = hopOnFontFamily),
-    titleLarge = Typography().titleLarge.copy(fontFamily = hopOnFontFamily),
-    titleMedium = Typography().titleMedium.copy(fontFamily = hopOnFontFamily),
-    titleSmall = Typography().titleSmall.copy(fontFamily = hopOnFontFamily),
-    bodyLarge = Typography().bodyLarge.copy(fontFamily = hopOnFontFamily),
-    bodyMedium = Typography().bodyMedium.copy(fontFamily = hopOnFontFamily),
-    bodySmall = Typography().bodySmall.copy(fontFamily = hopOnFontFamily),
-    labelLarge = Typography().labelLarge.copy(fontFamily = hopOnFontFamily),
-    labelMedium = Typography().labelMedium.copy(fontFamily = hopOnFontFamily),
-    labelSmall = Typography().labelSmall.copy(fontFamily = hopOnFontFamily)
+    headlineSmall = Typography().headlineSmall.copy(fontFamily = hopOnFontFamily, fontSize = 24.sp),
+    titleLarge = Typography().titleLarge.copy(fontFamily = hopOnFontFamily, fontSize = 22.sp),
+    titleMedium = Typography().titleMedium.copy(fontFamily = hopOnFontFamily, fontSize = 16.sp),
+    titleSmall = Typography().titleSmall.copy(fontFamily = hopOnFontFamily, fontSize = 14.sp),
+    bodyLarge = Typography().bodyLarge.copy(fontFamily = hopOnFontFamily, fontSize = 15.sp),
+    bodyMedium = Typography().bodyMedium.copy(fontFamily = hopOnFontFamily, fontSize = 14.sp),
+    bodySmall = Typography().bodySmall.copy(fontFamily = hopOnFontFamily, fontSize = 12.sp),
+    labelLarge = Typography().labelLarge.copy(fontFamily = hopOnFontFamily, fontSize = 14.sp),
+    labelMedium = Typography().labelMedium.copy(fontFamily = hopOnFontFamily, fontSize = 12.sp),
+    labelSmall = Typography().labelSmall.copy(fontFamily = hopOnFontFamily, fontSize = 11.sp)
 )
 
 private val hopOnLightColorScheme = lightColorScheme(

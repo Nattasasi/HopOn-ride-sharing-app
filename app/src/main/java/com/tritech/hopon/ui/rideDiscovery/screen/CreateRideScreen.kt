@@ -3,13 +3,16 @@ package com.tritech.hopon.ui.rideDiscovery.screen
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -17,12 +20,16 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
@@ -40,7 +47,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -103,18 +109,23 @@ fun createRideScreen(
     onBackClick: () -> Unit,
     onCreateRideClick: (CreateRideSubmission) -> Unit
 ) {
+    val primaryColor = colorResource(id = R.color.colorPrimary)
+    val neutralIconColor = colorResource(id = R.color.colorPrimaryDark)
     val defaultVehicleInfo = stringResource(id = R.string.default_vehicle_info)
     val defaultContactInfo = stringResource(id = R.string.default_contact_info)
+    val defaultWaitTime = stringResource(id = R.string.create_ride_default_wait_time)
     val currentLocationFallback = stringResource(id = R.string.current_location)
     val selectedPlaceFallback = stringResource(id = R.string.selected_place)
 
     var date by rememberSaveable { mutableStateOf("") }
     var time by rememberSaveable { mutableStateOf("") }
-    var waitTime by rememberSaveable { mutableStateOf("") }
+    var waitTime by rememberSaveable(defaultWaitTime) { mutableStateOf(defaultWaitTime) }
     var maxPeople by rememberSaveable { mutableStateOf(4) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showMaxPeopleMenu by remember { mutableStateOf(false) }
+    var showVehicleMenu by remember { mutableStateOf(false) }
+    var showContactMenu by remember { mutableStateOf(false) }
     var vehicleInfo by rememberSaveable(defaultVehicleInfo) { mutableStateOf(defaultVehicleInfo) }
     var contactInfo by rememberSaveable(defaultContactInfo) { mutableStateOf(defaultContactInfo) }
     var notes by rememberSaveable { mutableStateOf("") }
@@ -126,6 +137,8 @@ fun createRideScreen(
     val focusManager = LocalFocusManager.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     var wasImeVisible by remember { mutableStateOf(false) }
+    val vehicleOptions = listOf(defaultVehicleInfo)
+    val contactOptions = listOf(defaultContactInfo)
 
     fun dismissEditingUi() {
         focusManager.clearFocus(force = true)
@@ -144,133 +157,167 @@ fun createRideScreen(
         dismissEditingUi()
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
             modifier = Modifier
-                .statusBarsPadding()
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            IconButton(
-                onClick = {
-                    if (showLocationPredictions || imeVisible) {
-                        dismissEditingUi()
-                    } else {
-                        onBackClick()
-                    }
-                },
-                modifier = Modifier.size(36.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .fillMaxWidth()
+                    .padding(bottom = 2.dp)
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = stringResource(id = R.string.create_ride_back),
+                IconButton(
+                    onClick = {
+                        if (showLocationPredictions || imeVisible) {
+                            dismissEditingUi()
+                        } else {
+                            onBackClick()
+                        }
+                    },
                     modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                        contentDescription = stringResource(id = R.string.create_ride_back),
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.size(6.dp))
+                Text(
+                    text = stringResource(id = R.string.create_ride_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
-            Spacer(modifier = Modifier.size(6.dp))
-            Text(
-                text = stringResource(id = R.string.create_ride_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
 
-        createRideLocationInputs(
-            meetupLocation = meetupLocation,
-            destination = destination,
-            onMeetupLocationChange = onMeetupLocationChange,
-            onDestinationChange = onDestinationChange,
-            onMeetupFocusChanged = onMeetupFocusChanged,
-            onDestinationFocusChanged = onDestinationFocusChanged,
-            onMeetupSearchAction = onMeetupSearchAction,
-            onDestinationSearchAction = onDestinationSearchAction,
-            onMeetupClearClick = onMeetupClearClick,
-            onDestinationClearClick = onDestinationClearClick,
-            modifier = Modifier.onGloballyPositioned { coordinates ->
-                val bounds = coordinates.boundsInWindow()
-                locationBoxX = bounds.left.toInt()
-                locationBoxBottomY = bounds.bottom.toInt()
-                locationBoxWidthPx = bounds.width.toInt()
-            }
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = date,
-                onValueChange = {},
-                label = { Text(text = stringResource(id = R.string.create_ride_date_label)) },
-                singleLine = true,
-                readOnly = true,
-                trailingIcon = {
-                    IconButton(onClick = { showDatePicker = true }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Select date"
-                        )
-                    }
-                },
-                modifier = Modifier.weight(1f)
+            createRideLocationInputs(
+                meetupLocation = meetupLocation,
+                destination = destination,
+                onMeetupLocationChange = onMeetupLocationChange,
+                onDestinationChange = onDestinationChange,
+                onMeetupFocusChanged = onMeetupFocusChanged,
+                onDestinationFocusChanged = onDestinationFocusChanged,
+                onMeetupSearchAction = onMeetupSearchAction,
+                onDestinationSearchAction = onDestinationSearchAction,
+                onMeetupClearClick = onMeetupClearClick,
+                onDestinationClearClick = onDestinationClearClick,
+                modifier = Modifier.onGloballyPositioned { coordinates ->
+                    val bounds = coordinates.boundsInWindow()
+                    locationBoxX = bounds.left.toInt()
+                    locationBoxBottomY = bounds.bottom.toInt()
+                    locationBoxWidthPx = bounds.width.toInt()
+                }
             )
 
-            OutlinedTextField(
-                value = time,
-                onValueChange = {},
-                label = { Text(text = stringResource(id = R.string.create_ride_time_label)) },
-                singleLine = true,
-                readOnly = true,
-                trailingIcon = {
-                    IconButton(onClick = { showTimePicker = true }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Select time"
-                        )
-                    }
-                },
-                modifier = Modifier.weight(1f)
-            )
-        }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.clickable { showDatePicker = true },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CalendarMonth,
+                        contentDescription = stringResource(id = R.string.create_ride_date_label),
+                        tint = neutralIconColor,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.size(6.dp))
+                    Text(
+                        text = date.ifBlank { stringResource(id = R.string.create_ride_today_label) },
+                        color = primaryColor,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = waitTime,
-                onValueChange = { waitTime = it },
-                label = { Text(text = stringResource(id = R.string.create_ride_wait_time_label)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Next
-                ),
-                modifier = Modifier.weight(1f)
-            )
+                Row(
+                    modifier = Modifier.clickable { showTimePicker = true },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AccessTime,
+                        contentDescription = stringResource(id = R.string.create_ride_time_label),
+                        tint = neutralIconColor,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.size(6.dp))
+                    Text(
+                        text = time.ifBlank { stringResource(id = R.string.create_ride_default_time_label) },
+                        color = primaryColor,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
 
-            OutlinedTextField(
-                value = maxPeople.toString(),
-                onValueChange = {},
-                label = { Text(text = stringResource(id = R.string.create_ride_max_people_label)) },
-                singleLine = true,
-                readOnly = true,
-                trailingIcon = {
-                    IconButton(onClick = { showMaxPeopleMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Select max people"
-                        )
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextField(
+                        value = waitTime,
+                        onValueChange = { input ->
+                            waitTime = input.filter { it.isDigit() }.take(2)
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = { focusManager.clearFocus() }
+                        ),
+                        textStyle = MaterialTheme.typography.titleMedium,
+                        colors = TextFieldDefaults.colors(
+                            focusedTextColor = primaryColor,
+                            unfocusedTextColor = primaryColor,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            cursorColor = primaryColor
+                        ),
+                        modifier = Modifier.width(48.dp)
+                    )
+                    Text(
+                        text = stringResource(id = R.string.create_ride_wait_min_suffix),
+                        color = primaryColor,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.clickable { showMaxPeopleMenu = true },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Groups,
+                        contentDescription = stringResource(id = R.string.create_ride_max_people_label),
+                        tint = neutralIconColor,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.size(6.dp))
+                    Text(
+                        text = maxPeople.toString(),
+                        color = Color.Black,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = stringResource(id = R.string.create_ride_max_people_label),
+                        tint = primaryColor,
+                        modifier = Modifier.size(22.dp)
+                    )
                     DropdownMenu(
                         expanded = showMaxPeopleMenu,
                         onDismissRequest = { showMaxPeopleMenu = false }
@@ -285,38 +332,71 @@ fun createRideScreen(
                             )
                         }
                     }
-                },
-                modifier = Modifier.weight(1f)
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(22.dp)
+            ) {
+                createRideInfoDisplay(
+                    label = stringResource(id = R.string.vehicle_label),
+                    value = vehicleInfo,
+                    expanded = showVehicleMenu,
+                    options = vehicleOptions,
+                    onExpandedChange = { showVehicleMenu = it },
+                    onOptionSelected = { selected ->
+                        vehicleInfo = selected
+                        showVehicleMenu = false
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                createRideInfoDisplay(
+                    label = stringResource(id = R.string.contact_label),
+                    value = contactInfo,
+                    expanded = showContactMenu,
+                    options = contactOptions,
+                    onExpandedChange = { showContactMenu = it },
+                    onOptionSelected = { selected ->
+                        contactInfo = selected
+                        showContactMenu = false
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Text(
+                text = stringResource(id = R.string.create_ride_notes_short_label),
+                style = MaterialTheme.typography.titleMedium,
+                color = colorResource(id = R.color.colorPrimaryDark),
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp)
             )
+
+            TextField(
+                value = notes,
+                onValueChange = { notes = it },
+                minLines = 3,
+                maxLines = 5,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = Color.Black,
+                    unfocusedTextColor = Color.Black,
+                    focusedContainerColor = colorResource(id = R.color.light_grey),
+                    unfocusedContainerColor = colorResource(id = R.color.light_grey),
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = primaryColor
+                ),
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(136.dp)
+            )
+
+            Spacer(modifier = Modifier.height(96.dp))
         }
-
-        OutlinedTextField(
-            value = vehicleInfo,
-            onValueChange = { vehicleInfo = it },
-            label = { Text(text = stringResource(id = R.string.create_ride_vehicle_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-            value = contactInfo,
-            onValueChange = { contactInfo = it },
-            label = { Text(text = stringResource(id = R.string.create_ride_contact_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-            value = notes,
-            onValueChange = { notes = it },
-            label = { Text(text = stringResource(id = R.string.create_ride_notes_label)) },
-            minLines = 3,
-            maxLines = 5,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(110.dp)
-        )
 
         hopOnButton(
             text = stringResource(id = R.string.create_ride_action),
@@ -360,8 +440,9 @@ fun createRideScreen(
                 )
             },
             modifier = Modifier
-                .padding(top = 8.dp)
                 .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         )
     }
 
@@ -543,4 +624,59 @@ private fun createRideLocationField(
             .padding(horizontal = 4.dp)
             .onFocusChanged { onFocusChanged(it.isFocused) }
     )
+}
+
+@Composable
+private fun createRideInfoDisplay(
+    label: String,
+    value: String,
+    expanded: Boolean,
+    options: List<String>,
+    onExpandedChange: (Boolean) -> Unit,
+    onOptionSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val primaryColor = colorResource(id = R.color.colorPrimary)
+    val subtleLabelColor = colorResource(id = R.color.colorPrimaryDark)
+
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = subtleLabelColor.copy(alpha = 0.55f)
+        )
+        Box {
+            Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                    .padding(top = 2.dp)
+                    .clickable { onExpandedChange(true) },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = value.ifBlank { stringResource(id = R.string.default_vehicle_info) },
+                    style = MaterialTheme.typography.titleLarge,
+                color = Color.Black
+            )
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = label,
+                tint = primaryColor,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { onExpandedChange(false) },
+                modifier = Modifier.heightIn(max = 200.dp)
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = { onOptionSelected(option) }
+                    )
+                }
+            }
+        }
+    }
 }

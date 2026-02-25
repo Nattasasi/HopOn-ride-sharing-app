@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -20,13 +19,13 @@ fun statusBadge(
     Text(
         text = text,
         color = textColor,
-        fontSize = 12.sp,
+        style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier
             .background(
                 color = backgroundColor,
                 shape = MaterialTheme.shapes.small
             )
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .padding(horizontal = 10.dp, vertical = 2.dp)
     )
 }

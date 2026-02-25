@@ -31,6 +31,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,7 +49,6 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptor
@@ -520,8 +520,7 @@ private fun paymentActionButton(
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 14.sp
+            fontWeight = FontWeight.SemiBold
         )
     }
 }
@@ -595,6 +594,11 @@ private fun passengerPaymentSection(
         value = comment,
         onValueChange = onCommentChange,
         placeholder = { Text(text = stringResource(id = R.string.ride_payment_comment_hint)) },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = colorResource(id = R.color.colorPrimary),
+            unfocusedBorderColor = colorResource(id = R.color.colorPrimary),
+            cursorColor = colorResource(id = R.color.colorPrimary)
+        ),
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 14.dp)
