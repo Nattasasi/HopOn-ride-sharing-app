@@ -1,6 +1,5 @@
 package com.tritech.hopon.simulator
 
-import com.google.maps.model.LatLng
 import org.json.JSONObject
 
 class WebSocket(private var webSocketListener: WebSocketListener) {
@@ -19,22 +18,10 @@ class WebSocket(private var webSocketListener: WebSocketListener) {
                     webSocketListener
                 )
             }
-            "requestCab" -> {
-                val pickUpLatLng =
-                    LatLng(jsonObject.getDouble("pickUpLat"), jsonObject.getDouble("pickUpLng"))
-                val dropLatLng =
-                    LatLng(jsonObject.getDouble("dropLat"), jsonObject.getDouble("dropLng"))
-                Simulator.requestCab(
-                    pickUpLatLng,
-                    dropLatLng,
-                    webSocketListener
-                )
-            }
         }
     }
 
     fun disconnect() {
-        Simulator.stopTimer()
         this.webSocketListener.onDisconnect()
     }
 

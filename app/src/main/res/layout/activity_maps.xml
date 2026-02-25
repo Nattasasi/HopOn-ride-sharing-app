@@ -26,7 +26,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <com.google.android.material.card.MaterialCardView
+    <androidx.cardview.widget.CardView
         android:id="@+id/predictionsCard"
         android:layout_width="0dp"
         android:layout_height="0dp"
@@ -46,7 +46,7 @@
             android:id="@+id/predictionsCompose"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
-    </com.google.android.material.card.MaterialCardView>
+    </androidx.cardview.widget.CardView>
 
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/ridesBottomSheetCard"
@@ -92,6 +92,16 @@
 
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/rideInProcessContent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@+id/mapCompose"
+        app:layout_constraintBottom_toTopOf="@+id/bottomNav"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/ridePaymentContent"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:visibility="gone"

@@ -1,23 +1,6 @@
 package com.tritech.hopon.ui.rideDiscovery.core
 
-import com.google.android.gms.maps.model.LatLng
-
 interface MapsView {
-
-    // Notify user when booking request is accepted.
-    fun informCabBooked()
-
-    // Draw path polyline for pickup/trip route.
-    fun showPath(latLngList: List<LatLng>)
-
-    // Notify user that cab is close to pickup point.
-    fun informCabIsArriving()
-
-    // Notify user that cab reached pickup point.
-    fun informCabArrived()
-
-    // Notify user when trip officially starts.
-    fun informTripStart()
 
     // Notify user when trip ends.
     fun informTripEnd()

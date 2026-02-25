@@ -71,6 +71,7 @@ import com.tritech.hopon.ui.rideDiscovery.core.RoutesApiClient
 import com.tritech.hopon.ui.rideDiscovery.core.CreateRideSubmission
 import com.tritech.hopon.ui.rideDiscovery.core.MockChatMessage
 import com.tritech.hopon.ui.rideDiscovery.core.MockData
+import com.tritech.hopon.ui.rideDiscovery.core.MockRide
 import com.tritech.hopon.ui.rideDiscovery.core.RideDateTimeFormatter
 import com.tritech.hopon.ui.rideDiscovery.core.RideListItem
 import com.tritech.hopon.ui.rideDiscovery.core.RideLifecycleStatus
@@ -151,6 +152,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var isRideDetailVisible by mutableStateOf(false)
     private var isProfileVisible by mutableStateOf(false)
     private var isRideInProcessVisible by mutableStateOf(false)
+    private var isRidePaymentVisible by mutableStateOf(false)
     private var isCreateRideVisible by mutableStateOf(false)
     private var isGroupChatVisible by mutableStateOf(false)
     private var groupChatMessages by mutableStateOf<List<MockChatMessage>>(emptyList())
@@ -176,6 +178,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var pickupRoutePolyline: Polyline? = null
     private var rideRoutePoints by mutableStateOf<List<LatLng>>(emptyList())
     private var pickupRoutePoints by mutableStateOf<List<LatLng>>(emptyList())
+    private var pendingPaymentRide: MockRide? = null
+    private var isPendingPaymentHost by mutableStateOf(false)
     private var hasLocallyDetectedTripEnd = false
     private val meetupPinSizePx = 94
     private val meetupPinSelectedSizePx = 112
@@ -235,6 +239,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         setUpRideDetailCompose()
         setUpProfileCompose()
         setUpRideInProcessCompose()
+        setUpRidePaymentCompose()
         setUpGroupChatCompose()
         setUpCreateRideCompose()
         setUpPredictionsCompose()
@@ -275,6 +280,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 isHistoryVisible ||
                 isProfileVisible ||
                 isRideInProcessVisible ||
+                isRidePaymentVisible ||
                 isCreateRideVisible
             ) {
                 selectedBottomNavItem = MapsBottomNavItem.HOME
@@ -417,6 +423,37 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 onGroupChatClick = ::showGroupChatContent,
                 onCancelRideClick = ::showCancelRideConfirmation,
                 onBackClick = ::showHistoryContent
+            )
+        }
+    }
+
+    private fun setUpRidePaymentCompose() {
+        binding.ridePaymentContent.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.ridePaymentContent.setHopOnContent {
+            val ride = pendingPaymentRide
+            val passengerNames = ride?.passengers?.map { it.name }.orEmpty()
+            val durationMinutes = ride?.rideTimeMinutes ?: 18
+            val distanceMiles = ride?.let {
+                val meters = calculateDistanceMeters(it.meetupLatLng, it.destinationLatLng)
+                (meters / 1609.344).toDouble()
+            } ?: 5.2
+
+            ridePaymentScreen(
+                isHost = isPendingPaymentHost,
+                hostName = ride?.host?.name ?: resolveCurrentUserDisplayName(),
+                passengerNames = passengerNames,
+                fareBaht = 30,
+                durationMinutes = durationMinutes,
+                distanceMiles = distanceMiles,
+                currentLocationLatLng = currentLatLng,
+                meetupLatLng = ride?.meetupLatLng,
+                destinationLatLng = ride?.destinationLatLng,
+                pickupRoutePoints = pickupRoutePoints,
+                rideRoutePoints = rideRoutePoints,
+                onHostFinishClick = ::completeRideAfterPayment,
+                onPassengerConfirmClick = ::completeRideAfterPayment
             )
         }
     }
@@ -811,7 +848,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     override fun onResume() {
         super.onResume()
         selectedBottomNavItem = when {
-            isHistoryVisible || isRideDetailVisible -> MapsBottomNavItem.RIDES
+            isHistoryVisible || isRideDetailVisible || isRideInProcessVisible || isRidePaymentVisible -> MapsBottomNavItem.RIDES
             isProfileVisible -> MapsBottomNavItem.PROFILE
             else -> MapsBottomNavItem.HOME
         }
@@ -823,6 +860,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = false
+        isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
         isRidePanelVisible = false
@@ -835,6 +873,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
@@ -853,12 +892,14 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = false
+        isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
@@ -880,6 +921,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = true
         isRideInProcessVisible = false
+        isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
         isRidePanelVisible = false
@@ -888,6 +930,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.VISIBLE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
@@ -907,6 +950,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = true
         isProfileVisible = false
         isRideInProcessVisible = false
+        isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
         isRidePanelVisible = false
@@ -915,6 +959,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideDetailContent.visibility = View.VISIBLE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
@@ -933,6 +978,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = true
+        isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
         isRidePanelVisible = false
@@ -942,6 +988,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.VISIBLE
+        binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
@@ -1017,6 +1064,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = false
+        isRidePaymentVisible = false
         isCreateRideVisible = true
         isGroupChatVisible = false
         isRidePanelVisible = false
@@ -1025,6 +1073,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.VISIBLE
         binding.groupChatContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
@@ -1052,6 +1101,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRideDetailVisible = false
         isProfileVisible = false
         isRideInProcessVisible = false
+        isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = true
         isRidePanelVisible = false
@@ -1060,6 +1110,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
         binding.rideInProcessContent.visibility = View.GONE
+        binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.VISIBLE
         binding.bottomNav.visibility = View.GONE
@@ -1076,6 +1127,53 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         groupChatMessages = MockData.groupChatMessagesForUser(currentUserId)
         groupChatParticipants = MockData.groupChatParticipantsForUser(currentUserId)
             .map { user -> user.name }
+    }
+
+    private fun showRidePaymentContent(ride: MockRide, isHost: Boolean) {
+        animateMainContentTransition()
+        selectedBottomNavItem = MapsBottomNavItem.RIDES
+        pendingPaymentRide = ride
+        isPendingPaymentHost = isHost
+        isHistoryVisible = false
+        isRideDetailVisible = false
+        isProfileVisible = false
+        isRideInProcessVisible = false
+        isRidePaymentVisible = true
+        isCreateRideVisible = false
+        isGroupChatVisible = false
+        isRidePanelVisible = false
+        isRidePanelExpanded = false
+        binding.historyContent.visibility = View.GONE
+        binding.rideDetailContent.visibility = View.GONE
+        binding.profileContent.visibility = View.GONE
+        binding.rideInProcessContent.visibility = View.GONE
+        binding.ridePaymentContent.visibility = View.VISIBLE
+        binding.createRideContent.visibility = View.GONE
+        binding.groupChatContent.visibility = View.GONE
+        binding.bottomNav.visibility = View.VISIBLE
+        binding.searchBarContainer.visibility = View.GONE
+        binding.predictionsCard.visibility = View.GONE
+        binding.ridesBottomSheetCard.visibility = View.GONE
+        binding.mapTouchOverlay.visibility = View.GONE
+        binding.createRideButton.visibility = View.GONE
+        clearRideDetailSelection()
+        clearMeetupLocationMarkers()
+        selectedHistoryRide = null
+    }
+
+    private fun completeRideAfterPayment() {
+        val currentUserId = SessionManager.getCurrentUserId(this)
+        MockData.completeOngoingRide(currentUserId)
+        pendingPaymentRide = null
+        isPendingPaymentHost = false
+        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
+            context = this,
+            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
+        )
+        Toast.makeText(this, getString(R.string.trip_end), Toast.LENGTH_SHORT).show()
+        reset()
+        selectedBottomNavItem = MapsBottomNavItem.RIDES
+        showHistoryContent()
     }
 
     private fun handleCreateRideClick() {
@@ -1715,11 +1813,15 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun reset() {
         // Restore map and UI to pre-booking default state.
+        isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
+        binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
         binding.createRideButton.visibility = View.GONE
+        pendingPaymentRide = null
+        isPendingPaymentHost = false
         groupChatMessages = emptyList()
         groupChatParticipants = emptyList()
         hideRideResultsPanel(clearData = true)
@@ -1867,67 +1969,19 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
 
-    override fun informCabBooked() {
-        Toast.makeText(this, getString(R.string.your_cab_is_booked), Toast.LENGTH_SHORT).show()
-    }
-
-    override fun showPath(latLngList: List<LatLng>) {
-        // Fit camera and draw route polylines from server path points.
-        val builder = LatLngBounds.Builder()
-        for (latLng in latLngList) {
-            builder.include(latLng)
-        }
-        val bounds = builder.build()
-        googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 2))
-
-        val polylineOptions = PolylineOptions()
-        polylineOptions.color(Color.GRAY)
-        polylineOptions.width(5f)
-        polylineOptions.addAll(latLngList)
-        greyPolyLine = googleMap.addPolyline(polylineOptions)
-
-        val blackPolylineOptions = PolylineOptions()
-        blackPolylineOptions.width(5f)
-        blackPolylineOptions.color(Color.BLACK)
-        blackPolyline = googleMap.addPolyline(blackPolylineOptions)
-
-        originMarker = addOriginDestinationMarkerAndGet(latLngList[0])
-        originMarker?.setAnchor(0.5f, 0.5f)
-        destinationMarker = addOriginDestinationMarkerAndGet(latLngList[latLngList.size - 1])
-        destinationMarker?.setAnchor(0.5f, 0.5f)
-
-        // Animate black overlay on top of gray route for progress effect.
-        val polylineAnimator = AnimationUtils.polyLineAnimator()
-        polylineAnimator.addUpdateListener { valueAnimator ->
-            val percentValue = (valueAnimator.animatedValue as Int)
-            val index = (greyPolyLine?.points!!.size * (percentValue / 100.0f)).toInt()
-            blackPolyline?.points = greyPolyLine?.points!!.subList(0, index)
-        }
-        polylineAnimator.start()
-    }
-
-    override fun informCabIsArriving() {
-        Toast.makeText(this, getString(R.string.your_cab_is_arriving), Toast.LENGTH_SHORT).show()
-    }
-
-    override fun informCabArrived() {
-        Toast.makeText(this, getString(R.string.your_cab_has_arrived), Toast.LENGTH_SHORT).show()
-    }
-
-    override fun informTripStart() {
-        Toast.makeText(this, getString(R.string.you_are_on_a_trip), Toast.LENGTH_SHORT).show()
-    }
-
     override fun informTripEnd() {
         hasLocallyDetectedTripEnd = true
         val currentUserId = SessionManager.getCurrentUserId(this)
-        MockData.completeOngoingRide(currentUserId)
-        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
-            context = this,
-            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
+        val ongoingRide = MockData.ongoingRideForUser(currentUserId)
+        if (ongoingRide == null) {
+            Toast.makeText(this, getString(R.string.trip_end), Toast.LENGTH_SHORT).show()
+            reset()
+            return
+        }
+        showRidePaymentContent(
+            ride = ongoingRide,
+            isHost = ongoingRide.host.id == currentUserId
         )
-        Toast.makeText(this, getString(R.string.trip_end), Toast.LENGTH_SHORT).show()
-        reset()
     }
 
     override fun showRoutesNotAvailableError() {

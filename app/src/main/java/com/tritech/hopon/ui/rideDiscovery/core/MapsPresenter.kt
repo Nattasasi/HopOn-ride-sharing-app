@@ -1,7 +1,6 @@
 package com.tritech.hopon.ui.rideDiscovery.core
 
 import android.util.Log
-import com.google.android.gms.maps.model.LatLng
 import com.tritech.hopon.data.network.NetworkService
 import com.tritech.hopon.simulator.WebSocket
 import com.tritech.hopon.simulator.WebSocketListener
@@ -30,17 +29,6 @@ class MapsPresenter(private val networkService: NetworkService) : WebSocketListe
         view = null
     }
 
-    fun requestCab(pickUpLatLng: LatLng, dropLatLng: LatLng) {
-        // Send a booking request with pickup and destination coordinates.
-        val jsonObject = JSONObject()
-        jsonObject.put("type", "requestCab")
-        jsonObject.put("pickUpLat", pickUpLatLng.latitude)
-        jsonObject.put("pickUpLng", pickUpLatLng.longitude)
-        jsonObject.put("dropLat", dropLatLng.latitude)
-        jsonObject.put("dropLng", dropLatLng.longitude)
-        webSocket.sendMessage(jsonObject.toString())
-    }
-
     override fun onConnect() {
         Log.d(TAG, "onConnect")
     }
@@ -50,29 +38,6 @@ class MapsPresenter(private val networkService: NetworkService) : WebSocketListe
         val jsonObject = JSONObject(data)
         // Route each socket event type to the appropriate view action.
         when (jsonObject.getString(Constants.TYPE)) {
-            Constants.CAB_BOOKED -> {
-                view?.informCabBooked()
-            }
-            Constants.PICKUP_PATH, Constants.TRIP_PATH -> {
-                val jsonArray = jsonObject.getJSONArray("path")
-                val pickUpPath = arrayListOf<LatLng>()
-                for (i in 0 until jsonArray.length()) {
-                    val lat = (jsonArray.get(i) as JSONObject).getDouble("lat")
-                    val lng = (jsonArray.get(i) as JSONObject).getDouble("lng")
-                    val latLng = LatLng(lat, lng)
-                    pickUpPath.add(latLng)
-                }
-                view?.showPath(pickUpPath)
-            }
-            Constants.CAB_IS_ARRIVING -> {
-                view?.informCabIsArriving()
-            }
-            Constants.CAB_ARRIVED -> {
-                view?.informCabArrived()
-            }
-            Constants.TRIP_START -> {
-                view?.informTripStart()
-            }
             Constants.TRIP_END -> {
                 view?.informTripEnd()
             }

@@ -2,7 +2,9 @@ package com.tritech.hopon.ui.components
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -31,10 +33,24 @@ private val hopOnTypography = Typography(
     labelSmall = Typography().labelSmall.copy(fontFamily = hopOnFontFamily)
 )
 
+private val hopOnLightColorScheme = lightColorScheme(
+    primary = Color(0xFF1896F2),
+    onPrimary = Color.White,
+    secondary = Color(0xFFFFCC00),
+    onSecondary = Color.Black,
+    background = Color.White,
+    onBackground = Color(0xFF1A1A1A),
+    surface = Color.White,
+    onSurface = Color(0xFF1A1A1A),
+    surfaceVariant = Color(0xFFF1F3F5),
+    onSurfaceVariant = Color(0xFF6B7280),
+    outlineVariant = Color(0xFFD9DDE2)
+)
+
 @Composable
 fun hopOnComposeTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = MaterialTheme.colorScheme,
+        colorScheme = hopOnLightColorScheme,
         typography = hopOnTypography,
         shapes = MaterialTheme.shapes,
         content = content
