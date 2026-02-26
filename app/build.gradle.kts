@@ -5,6 +5,12 @@ val localProps = gradleLocalProperties(rootDir, providers)
 // Helper to safely read a property value by key.
 fun localProp(name: String): String? = localProps.getProperty(name)?.trim()
 
+val emulatorApiBaseUrl = localProp("apiBaseUrlEmulator")
+    ?: "http://10.0.2.2:3001/api/v1/"
+val deviceApiBaseUrl = localProp("apiBaseUrlDevice")
+    ?: localProp("apiBaseUrl")
+    ?: "http://192.168.1.13:3001/api/v1/"
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -42,7 +48,17 @@ android {
             buildConfigField(
                 "String",
                 "API_BASE_URL",
-                "\"${localProp("apiBaseUrl") ?: "http://10.0.2.2:3001/api/v1/"}\""
+                "\"$deviceApiBaseUrl\""
+            )
+            buildConfigField(
+                "String",
+                "API_BASE_URL_EMULATOR",
+                "\"$emulatorApiBaseUrl\""
+            )
+            buildConfigField(
+                "String",
+                "API_BASE_URL_DEVICE",
+                "\"$deviceApiBaseUrl\""
             )
             buildConfigField(
                 "Boolean",
@@ -66,7 +82,17 @@ android {
             buildConfigField(
                 "String",
                 "API_BASE_URL",
-                "\"${localProp("apiBaseUrl") ?: "http://10.0.2.2:3001/api/v1/"}\""
+                "\"$deviceApiBaseUrl\""
+            )
+            buildConfigField(
+                "String",
+                "API_BASE_URL_EMULATOR",
+                "\"$emulatorApiBaseUrl\""
+            )
+            buildConfigField(
+                "String",
+                "API_BASE_URL_DEVICE",
+                "\"$deviceApiBaseUrl\""
             )
             buildConfigField(
                 "Boolean",

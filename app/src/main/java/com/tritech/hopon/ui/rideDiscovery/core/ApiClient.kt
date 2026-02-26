@@ -17,7 +17,9 @@ import retrofit2.converter.gson.GsonConverterFactory
 /**
  * Singleton Retrofit client for the car_pool REST API.
  *
- * - Base URL is injected from `BuildConfig.API_BASE_URL` (set via `local.properties`).
+ * - Base URL is resolved at runtime by [ApiBaseUrlResolver] from
+ *   `BuildConfig.API_BASE_URL_EMULATOR` and `BuildConfig.API_BASE_URL_DEVICE`
+ *   (set via `local.properties`).
  * - JWT token is read from [SessionManager] on every request so it always reflects the
  *   current session state without needing to rebuild the client.
  * - A token-refresh [Authenticator] automatically calls `/auth/refresh` on HTTP 401 and
@@ -40,6 +42,8 @@ object ApiClient {
     }
 
     private fun buildRetrofit(appContext: Context): Retrofit {
+        val apiBaseUrl = ApiBaseUrlResolver.resolve()
+
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
                 HttpLoggingInterceptor.Level.BODY
@@ -58,7 +62,7 @@ object ApiClient {
                 // Synchronous refresh call (must not use the main OkHttpClient to avoid deadlock).
                 val refreshClient = OkHttpClient()
                 val refreshRetrofit = Retrofit.Builder()
-                    .baseUrl(BuildConfig.API_BASE_URL)
+                    .baseUrl(apiBaseUrl)
                     .client(refreshClient)
                     .addConverterFactory(GsonConverterFactory.create())
                     .build()
@@ -72,7 +76,7 @@ object ApiClient {
                             // Use blocking Retrofit call via raw OkHttp to avoid coroutine context issues.
                             val mediaType = "application/json".toMediaType()
                             val refreshRequest = okhttp3.Request.Builder()
-                                .url("${BuildConfig.API_BASE_URL}auth/refresh")
+                                .url("${apiBaseUrl}auth/refresh")
                                 .post(
                                     "{\"refreshToken\":\"$refreshToken\"}"
                                         .toRequestBody(mediaType)
@@ -117,7 +121,7 @@ object ApiClient {
             .build()
 
         return Retrofit.Builder()
-            .baseUrl(BuildConfig.API_BASE_URL)
+            .baseUrl(apiBaseUrl)
             .client(httpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
