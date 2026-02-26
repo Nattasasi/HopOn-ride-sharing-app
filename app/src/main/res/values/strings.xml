@@ -56,6 +56,21 @@
     <string name="password">Password</string>
     <string name="login">Login</string>
     <string name="login_required_fields">Please enter email and password</string>
+    <string name="login_failed">Login failed. Check your email and password.</string>
+    <string name="login_error">Unable to reach server. Check your connection.</string>
+    <string name="login_no_account">Don\'t have an account?</string>
+    <string name="login_register_link">Register</string>
+    <string name="register_title">Create Account</string>
+    <string name="register_first_name">First name</string>
+    <string name="register_last_name">Last name</string>
+    <string name="register_dob">Date of birth (YYYY-MM-DD)</string>
+    <string name="register_phone">Phone number</string>
+    <string name="register_action">Create account</string>
+    <string name="register_required_fields">Please fill in all required fields</string>
+    <string name="register_failed">Registration failed. Please try again.</string>
+    <string name="register_error">Unable to reach server. Check your connection.</string>
+    <string name="already_have_account">Already have an account?</string>
+    <string name="sign_in_link">Sign in</string>
     <string name="close">Close</string>
     <string name="no_places_found">No places found</string>
     <string name="no_ride_history">No joined or created rides yet</string>
@@ -85,6 +100,8 @@
     <string name="create_ride_default_wait_time">10</string>
     <string name="create_ride_wait_time_compact">%1$s min</string>
     <string name="create_ride_wait_min_suffix">min</string>
+    <string name="create_ride_price_label">Price/person</string>
+    <string name="create_ride_price_suffix">฿</string>
     <string name="contact_label">Contact</string>
     <string name="default_vehicle_info">Default</string>
     <string name="default_contact_info">Default</string>
@@ -137,4 +154,32 @@
     <string name="ride_payment_attach_slip_title">Attach Payment Slip</string>
     <string name="ride_payment_attach_slip_subtitle">Upload bank transfer or PromptPay receipt</string>
     <string name="ride_payment_confirm_passenger">Confirm Payment</string>
+
+    <!-- Phase 6: Booking flow -->
+    <string name="booking_status_pending">Request Pending</string>
+    <string name="booking_status_confirmed">Booking Accepted</string>
+    <string name="booking_status_rejected">Request Rejected</string>
+    <string name="booking_status_cancelled">Booking Cancelled</string>
+    <string name="join_ride_label">Join Ride</string>
+    <string name="cancel_booking_label">Cancel Request</string>
+    <string name="view_requests_label">View Requests (%1$d)</string>
+    <string name="view_requests_label_none">View Requests</string>
+    <string name="booking_sent_success">Booking request sent!</string>
+    <string name="booking_cancel_success">Booking cancelled</string>
+    <string name="booking_respond_accept_success">Booking accepted</string>
+    <string name="booking_respond_reject_success">Booking rejected</string>
+    <string name="booking_error_own_ride">You cannot book your own ride</string>
+    <string name="booking_error_already_booked">You already have a booking for this ride</string>
+    <string name="booking_error_no_seats">No seats available</string>
+    <string name="booking_error_generic">Booking failed. Please try again.</string>
+    <string name="booking_requests_title">Booking Requests</string>
+    <string name="booking_requests_empty">No booking requests for this ride</string>
+    <string name="booking_requests_pending_count">Pending requests: %1$d</string>
+    <string name="booking_request_accept">Accept</string>
+    <string name="booking_request_reject">Reject</string>
+    <string name="booking_passenger_label">Passenger: %1$s</string>
+    <string name="booking_unknown_passenger">Unknown passenger</string>
+    <string name="booking_seats_label">Seats: %1$d</string>
+    <string name="price_per_seat_format">฿%1$.0f / seat</string>
+    <string name="seats_available_format">%1$d seats available</string>
 </resources>
