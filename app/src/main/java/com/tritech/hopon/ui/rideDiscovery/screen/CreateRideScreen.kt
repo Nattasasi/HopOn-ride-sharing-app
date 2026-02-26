@@ -124,6 +124,7 @@ fun createRideScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showMaxPeopleMenu by remember { mutableStateOf(false) }
+    var pricePerSeat by rememberSaveable { mutableStateOf("0") }
     var showVehicleMenu by remember { mutableStateOf(false) }
     var showContactMenu by remember { mutableStateOf(false) }
     var vehicleInfo by rememberSaveable(defaultVehicleInfo) { mutableStateOf(defaultVehicleInfo) }
@@ -338,6 +339,50 @@ fun createRideScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(id = R.string.create_ride_price_label),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = neutralIconColor
+                )
+                Text(
+                    text = stringResource(id = R.string.create_ride_price_suffix),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = primaryColor
+                )
+                TextField(
+                    value = pricePerSeat,
+                    onValueChange = { input ->
+                        pricePerSeat = input.filter { it.isDigit() || it == '.' }.take(6)
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.clearFocus() }
+                    ),
+                    textStyle = MaterialTheme.typography.titleMedium,
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = primaryColor,
+                        unfocusedTextColor = primaryColor,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = primaryColor
+                    ),
+                    modifier = Modifier.width(72.dp)
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
                     .padding(top = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(22.dp)
             ) {
@@ -423,6 +468,7 @@ fun createRideScreen(
                 val normalizedContactInfo = contactInfo.trim().ifEmpty { defaultContactInfo }
                 val normalizedNotes = notes.trim()
 
+                val parsedPrice = pricePerSeat.trim().toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
                 onCreateRideClick(
                     CreateRideSubmission(
                         meetupLocation = normalizedMeetup,
@@ -433,6 +479,7 @@ fun createRideScreen(
                         meetupTime = normalizedTime,
                         waitTimeMinutes = parsedWaitTime,
                         maxPeopleCount = parsedMaxPeople,
+                        pricePerSeat = parsedPrice,
                         vehicleInfo = normalizedVehicleInfo,
                         contactInfo = normalizedContactInfo,
                         additionalNotes = normalizedNotes

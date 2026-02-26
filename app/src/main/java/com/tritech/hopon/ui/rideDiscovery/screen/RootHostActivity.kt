@@ -52,6 +52,7 @@ import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.Polyline
 import com.google.android.gms.maps.model.PolylineOptions
 import com.google.android.libraries.places.api.Places
+import com.tritech.hopon.BuildConfig
 import com.google.android.libraries.places.api.model.AutocompletePrediction
 import com.tritech.hopon.R
 import com.tritech.hopon.data.network.NetworkService
@@ -70,20 +71,45 @@ import com.tritech.hopon.ui.rideDiscovery.core.PlacesSearchDataSource
 import com.tritech.hopon.ui.rideDiscovery.core.RoutesApiClient
 import com.tritech.hopon.ui.rideDiscovery.core.CreateRideSubmission
 import com.tritech.hopon.ui.rideDiscovery.core.MockChatMessage
-import com.tritech.hopon.ui.rideDiscovery.core.MockData
-import com.tritech.hopon.ui.rideDiscovery.core.MockRide
 import com.tritech.hopon.ui.rideDiscovery.core.RideDateTimeFormatter
 import com.tritech.hopon.ui.rideDiscovery.core.RideListItem
 import com.tritech.hopon.ui.rideDiscovery.core.RideLifecycleStatus
 import com.tritech.hopon.ui.rideDiscovery.core.MapsPresenter
 import com.tritech.hopon.ui.rideDiscovery.core.MapsView
-import com.tritech.hopon.ui.rides.core.RideHistoryProvider
 import com.tritech.hopon.utils.AnimationUtils
 import com.tritech.hopon.utils.MapUtils
 import com.tritech.hopon.utils.PermissionUtils
 import com.tritech.hopon.utils.SessionManager
 import com.tritech.hopon.utils.ViewUtils
 import java.util.Locale
+import androidx.lifecycle.lifecycleScope
+import com.tritech.hopon.ui.rideDiscovery.core.ApiBooking
+import com.tritech.hopon.ui.rideDiscovery.core.ApiBookingRepository
+import com.tritech.hopon.ui.rideDiscovery.core.ApiClient
+import com.tritech.hopon.ui.rideDiscovery.core.ApiCreateFeedbackRequest
+import com.tritech.hopon.ui.rideDiscovery.core.ApiCreatePaymentRequest
+import com.tritech.hopon.ui.rideDiscovery.core.ApiRideRepository
+import com.tritech.hopon.ui.rideDiscovery.core.ApiUpdateStatusRequest
+import com.tritech.hopon.ui.rideDiscovery.core.BookingRepository
+import com.tritech.hopon.ui.rideDiscovery.core.ChatSocketManager
+import com.tritech.hopon.ui.rideDiscovery.core.FeedbackService
+import com.tritech.hopon.ui.rideDiscovery.core.MessagesService
+import com.tritech.hopon.ui.rideDiscovery.core.PaymentsService
+import com.tritech.hopon.ui.rideDiscovery.core.PostsService
+import com.tritech.hopon.ui.rideDiscovery.core.RideParticipationRole
+import com.tritech.hopon.ui.rideDiscovery.core.RideRepository
+import com.tritech.hopon.ui.rideDiscovery.core.TrackingService
+import com.tritech.hopon.ui.rideDiscovery.core.ApiUpdateTrackingRequest
+import com.tritech.hopon.ui.rideDiscovery.core.isActiveBooking
+import com.tritech.hopon.ui.rideDiscovery.core.normaliseBookingStatus
+import com.tritech.hopon.ui.rideDiscovery.core.toMockChatMessages
+import com.tritech.hopon.ui.rideDiscovery.core.toRideListItem
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import org.json.JSONObject
+import retrofit2.HttpException
 
 class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
@@ -115,6 +141,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private lateinit var mapUiStateCoordinator: MapUiStateCoordinator
     private lateinit var ridePanelCoordinator: RidePanelCoordinator
     private lateinit var googleMap: GoogleMap
+    private lateinit var rideRepository: RideRepository
+    private lateinit var trackingService: TrackingService
     private var isMapReady = false
     private var presenter: MapsPresenter? = null
     private var fusedLocationProviderClient: FusedLocationProviderClient? = null
@@ -174,15 +202,47 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private var createRideRequestToken = 0L
     private var historyRideItems by mutableStateOf<List<RideListItem>>(emptyList())
     private var selectedHistoryRide by mutableStateOf<RideListItem?>(null)
+    private var isRideDetailOpenedFromMap by mutableStateOf(false)
+    private var historyPendingBookingRequestCount by mutableStateOf(0)
     private var rideRoutePolyline: Polyline? = null
     private var pickupRoutePolyline: Polyline? = null
     private var rideRoutePoints by mutableStateOf<List<LatLng>>(emptyList())
     private var pickupRoutePoints by mutableStateOf<List<LatLng>>(emptyList())
-    private var pendingPaymentRide: MockRide? = null
+    /** The ride currently being viewed in ride-in-process or payment screens. */
+    private var activeInProcessRide: RideListItem? = null
     private var isPendingPaymentHost by mutableStateOf(false)
+    /** Socket.IO manager for real-time group chat. */
+    private var chatSocketManager: ChatSocketManager? = null
+    /** MongoDB _id of the post whose chat room is currently open. */
+    private var currentChatPostId: String? = null
+    /** Passenger names for the active in-process ride (fetched from bookings). */
+    private var activeRidePassengerNames by mutableStateOf<List<String>>(emptyList())
     private var hasLocallyDetectedTripEnd = false
     private val meetupPinSizePx = 94
     private val meetupPinSelectedSizePx = 112
+
+    // ── Phase 6: Booking state ────────────────────────────────────────────────
+    private lateinit var bookingRepository: BookingRepository
+    /** MongoDB _id of the user's active booking for the currently selected ride. */
+    private var activeBookingId: String? = null
+    /** Status of the user's active booking ("pending"|"confirmed"|"rejected"|null). */
+    private var activeBookingStatus by mutableStateOf<String?>(null)
+    /** True while a booking network call is in-flight. */
+    private var isBookingLoading by mutableStateOf(false)
+    /** Booking requests fetched for the driver's selected ride. */
+    private var bookingRequestItems by mutableStateOf<List<ApiBooking>>(emptyList())
+    /** Post UUID currently loaded for host booking-request actions. */
+    private var bookingRequestsPostUuid: String? = null
+    /** Number of pending requests for the driver badge. */
+    private var pendingBookingRequestCount by mutableStateOf(0)
+    /** True when the selected ride belongs to the current user (driver view). */
+    private var isSelectedRideDriver by mutableStateOf(false)
+    /** Non-simulator: latest tracked driver location shown in in-process map. */
+    private var trackedInProcessLatLng by mutableStateOf<LatLng?>(null)
+    /** Non-simulator: polling job for passenger tracking updates. */
+    private var trackingPollJob: Job? = null
+    /** Non-simulator: throttle timestamp for host tracking updates. */
+    private var lastTrackingPushAtMillis: Long = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -196,6 +256,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
         binding = ActivityMapsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        rideRepository = ApiRideRepository(applicationContext) { currentLatLng ?: pickUpLatLng }
+        bookingRepository = ApiBookingRepository(applicationContext)
+        trackingService = ApiClient.create(applicationContext)
         searchUiCoordinator = SearchUiCoordinator(this, binding)
         ridePanelCoordinator = RidePanelCoordinator(
             ridesBottomSheetCard = binding.ridesBottomSheetCard,
@@ -252,8 +315,10 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             Places.initialize(applicationContext, getString(R.string.google_maps_key))
         }
         placesSearchDataSource = PlacesSearchDataSource(Places.createClient(this))
-        presenter = MapsPresenter(NetworkService())
-        presenter?.onAttach(this)
+        if (BuildConfig.USE_SIMULATOR) {
+            presenter = MapsPresenter(NetworkService())
+            presenter?.onAttach(this)
+        }
 
         // Initialize to Assumption University as default for testing on emulator without GPS.
         // Real location provider will override this if a valid location is obtained.
@@ -273,7 +338,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     private fun setUpBackPressHandler() {
         mapUiStateCoordinator.setUpBackPressHandler(this) {
             if (isRideDetailVisible) {
-                showHistoryContent()
+                if (isRideDetailOpenedFromMap) showMapContent() else showHistoryContent()
             } else if (isGroupChatVisible) {
                 showRideInProcessContent()
             } else if (
@@ -316,6 +381,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             mapHomeRideResultsScreen(
                 visible = isRidePanelVisible,
                 expanded = isRidePanelExpanded,
+                currentUserId = SessionManager.getCurrentUserId(this),
                 currentUserName = resolveCurrentUserDisplayName(),
                 onExpandChange = { expanded ->
                     if (expanded) expandRidePanel() else collapseRidePanel()
@@ -349,6 +415,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.historyContent.setHopOnContent {
             historyRidesScreen(
                 rides = historyRideItems,
+                currentUserId = SessionManager.getCurrentUserId(this),
                 currentUserName = resolveCurrentUserDisplayName(),
                 onRideClick = ::showRideDetailForHistoryRide
             )
@@ -363,7 +430,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             val ride = selectedHistoryRide
             if (ride != null) {
                 rideDetailScreen(
-                    onBackClick = ::showHistoryContent,
+                    onBackClick = {
+                        if (isRideDetailOpenedFromMap) showMapContent() else showHistoryContent()
+                    },
                     meetup = ride.meetupLabel,
                     destination = ride.destinationLabel,
                     pickupDistanceKm = String.format(
@@ -374,10 +443,19 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     meetupDateTime = ride.meetupDateTimeLabel,
                     waitTimeMinutes = ride.waitTimeMinutes,
                     hostName = ride.hostName,
+                    hostUserId = ride.hostUserId,
+                    currentUserId = SessionManager.getCurrentUserId(this),
                     currentUserName = resolveCurrentUserDisplayName(),
                     hostRating = ride.hostRating,
                     hostVehicleType = ride.hostVehicleType,
-                    peopleCount = ride.peopleCount
+                    peopleCount = ride.peopleCount,
+                    pricePerSeat = ride.pricePerSeat,
+                    seatsAvailable = ride.maxPeopleCount - ride.peopleCount,
+                    bookingStatus = ride.bookingStatus,
+                    pendingRequestCount = historyPendingBookingRequestCount,
+                    bookingRequests = bookingRequestItems,
+                    onApproveRequest = ::handleAcceptBooking,
+                    onDeclineRequest = ::handleRejectBooking
                 )
             }
         }
@@ -396,8 +474,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun resolveCurrentUserDisplayName(): String {
-        val currentUserId = SessionManager.getCurrentUserId(this)
-        return MockData.userNameForId(currentUserId) ?: currentUserId.orEmpty()
+        return SessionManager.getDisplayName(this)
+            ?: SessionManager.getCurrentUserId(this).orEmpty()
     }
 
     private fun setUpRideInProcessCompose() {
@@ -405,19 +483,18 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         binding.rideInProcessContent.setHopOnContent {
-            val currentUserId = SessionManager.getCurrentUserId(this)
-            val ongoingRide = MockData.ongoingRideForUser(currentUserId)
+            val ride = activeInProcessRide
             rideInProcessScreen(
-                destinationLabel = ongoingRide?.destinationLabel,
-                meetupLabel = ongoingRide?.meetupLabel,
-                meetupDateTimeLabel = ongoingRide?.meetupDateTimeLabel,
-                waitTimeMinutes = ongoingRide?.waitTimeMinutes,
-                peopleCount = ongoingRide?.peopleCount,
-                maxPeopleCount = ongoingRide?.maxPeopleCount,
-                hostName = ongoingRide?.host?.name,
-                currentLocationLatLng = currentLatLng,
-                meetupLatLng = ongoingRide?.meetupLatLng,
-                destinationLatLng = ongoingRide?.destinationLatLng,
+                destinationLabel = ride?.destinationLabel,
+                meetupLabel = ride?.meetupLabel,
+                meetupDateTimeLabel = ride?.meetupDateTimeLabel,
+                waitTimeMinutes = ride?.waitTimeMinutes,
+                peopleCount = ride?.peopleCount,
+                maxPeopleCount = ride?.maxPeopleCount,
+                hostName = ride?.hostName,
+                currentLocationLatLng = trackedInProcessLatLng ?: currentLatLng,
+                meetupLatLng = ride?.meetupLatLng,
+                destinationLatLng = ride?.destinationLatLng,
                 pickupRoutePoints = pickupRoutePoints,
                 rideRoutePoints = rideRoutePoints,
                 onGroupChatClick = ::showGroupChatContent,
@@ -432,8 +509,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         binding.ridePaymentContent.setHopOnContent {
-            val ride = pendingPaymentRide
-            val passengerNames = ride?.passengers?.map { it.name }.orEmpty()
+            val ride = activeInProcessRide
+            val passengerNames = activeRidePassengerNames
             val durationMinutes = ride?.rideTimeMinutes ?: 18
             val distanceMiles = ride?.let {
                 val meters = calculateDistanceMeters(it.meetupLatLng, it.destinationLatLng)
@@ -442,9 +519,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
             ridePaymentScreen(
                 isHost = isPendingPaymentHost,
-                hostName = ride?.host?.name ?: resolveCurrentUserDisplayName(),
+                hostName = ride?.hostName ?: resolveCurrentUserDisplayName(),
                 passengerNames = passengerNames,
-                fareBaht = 30,
+                fareBaht = ride?.pricePerSeat?.toInt() ?: 30,
                 durationMinutes = durationMinutes,
                 distanceMiles = distanceMiles,
                 currentLocationLatLng = currentLatLng,
@@ -453,7 +530,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 pickupRoutePoints = pickupRoutePoints,
                 rideRoutePoints = rideRoutePoints,
                 onHostFinishClick = ::completeRideAfterPayment,
-                onPassengerConfirmClick = ::completeRideAfterPayment
+                onPassengerConfirmClick = ::handlePassengerPaymentConfirm
             )
         }
     }
@@ -473,20 +550,30 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun cancelCurrentOngoingRide() {
-        val currentUserId = SessionManager.getCurrentUserId(this)
-        val canceled = MockData.cancelOngoingRide(currentUserId)
-        if (!canceled) {
-            Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
-            return
+        val ride = activeInProcessRide
+
+        // Cancel the booking or post via API (fire-and-forget).
+        if (ride != null) {
+            lifecycleScope.launch {
+                val bookingId = ride.bookingId
+                if (!bookingId.isNullOrBlank()) {
+                    runCatching { bookingRepository.cancelBooking(bookingId) }
+                } else if (ride.postId.isNotBlank()) {
+                    runCatching {
+                        ApiClient.create<PostsService>(this@RootHostActivity)
+                            .updateStatus(ride.postId, ApiUpdateStatusRequest("cancelled"))
+                    }
+                }
+            }
         }
 
+        chatSocketManager?.disconnect()
+        currentChatPostId = null
+        activeInProcessRide = null
+        activeRidePassengerNames = emptyList()
         NotificationManagerCompat.from(this).cancel(RIDE_ONGOING_NOTIFICATION_ID)
         pickupRoutePoints = emptyList()
         rideRoutePoints = emptyList()
-        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
-            context = this,
-            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
-        )
         selectedBottomNavItem = MapsBottomNavItem.RIDES
         showHistoryContent()
         Toast.makeText(this, getString(R.string.cancel_ride_success), Toast.LENGTH_SHORT).show()
@@ -508,8 +595,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun handleSendGroupChatMessage(message: String) {
-        val currentUserId = SessionManager.getCurrentUserId(this)
-        groupChatMessages = MockData.sendGroupChatMessage(currentUserId, message)
+        chatSocketManager?.sendMessage(message)
     }
 
     private fun setUpCreateRideCompose() {
@@ -576,9 +662,24 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun showRideDetailForHistoryRide(ride: RideListItem) {
         if (ride.lifecycleStatus == RideLifecycleStatus.ONGOING) {
+            activeInProcessRide = ride
             showRideInProcessContent()
             return
         }
+
+        isRideDetailOpenedFromMap = false
+        historyPendingBookingRequestCount = 0
+        bookingRequestItems = emptyList()
+        val currentUserId = SessionManager.getCurrentUserId(this).orEmpty()
+        val iAmDriver = (ride.hostUserId.isNotBlank() && ride.hostUserId == currentUserId) ||
+            ride.participationRole == RideParticipationRole.HOSTED
+        if (iAmDriver && ride.postUuid.isNotEmpty()) {
+            bookingRequestsPostUuid = ride.postUuid
+            loadBookingRequestsForPost(ride.postUuid)
+        } else {
+            bookingRequestsPostUuid = null
+        }
+
         selectedHistoryRide = ride
         showRideDetailContent()
     }
@@ -598,8 +699,64 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             meetupMarkerController?.setSelectedMarker(it)
         }
         
-        // Show "Join Ride" button
+        // Show "Join Ride" / action button
         binding.createRideButton.visibility = View.VISIBLE
+
+        // Reset Phase 6 booking state for the newly selected ride
+        activeBookingId = null
+        activeBookingStatus = null
+        isSelectedRideDriver = false
+        bookingRequestItems = emptyList()
+        pendingBookingRequestCount = 0
+
+        // Load booking / driver state from API when this is a real post
+        if (ride.postId.isNotEmpty()) {
+            val currentUserId = SessionManager.getCurrentUserId(this).orEmpty()
+
+            // Check if the current user is the driver of this ride
+            lifecycleScope.launch {
+                val iAmDriver = (ride.hostUserId.isNotBlank() && ride.hostUserId == currentUserId) ||
+                    ride.participationRole == RideParticipationRole.HOSTED
+
+                if (iAmDriver && ride.postUuid.isNotEmpty()) {
+                    isSelectedRideDriver = true
+                    loadBookingRequestsForPost(ride.postUuid)
+                } else if (ride.postId.isNotEmpty()) {
+                    loadMyBookingForRide(ride.postId)
+                }
+            }
+        }
+    }
+
+    /** Load the current user's booking (if any) for the given post MongoDB _id. */
+    private fun loadMyBookingForRide(postMongoId: String) {
+        lifecycleScope.launch {
+            val result = bookingRepository.getBookingForPost(postMongoId)
+            result.getOrNull()?.let { booking ->
+                activeBookingId = booking.id
+                activeBookingStatus = booking.status
+            }
+        }
+    }
+
+    /** Driver: load booking requests for a post (by UUID). */
+    private fun loadBookingRequestsForPost(postUuid: String) {
+        lifecycleScope.launch {
+            val result = bookingRepository.getBookingsForPost(postUuid)
+            result.fold(
+                onSuccess = { requests ->
+                    bookingRequestItems = requests
+                    val pendingCount = requests.count { it.status == "pending" }
+                    pendingBookingRequestCount = pendingCount
+                    historyPendingBookingRequestCount = pendingCount
+                },
+                onFailure = {
+                    bookingRequestItems = emptyList()
+                    pendingBookingRequestCount = 0
+                    historyPendingBookingRequestCount = 0
+                }
+            )
+        }
     }
 
     private fun clearRideDetailSelection(restoreCreateRideButton: Boolean = false) {
@@ -613,6 +770,13 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         
         // Clear marker selection
         clearSelectedMeetupMarker()
+
+        // Reset Phase 6 booking state
+        activeBookingId = null
+        activeBookingStatus = null
+        isSelectedRideDriver = false
+        bookingRequestItems = emptyList()
+        pendingBookingRequestCount = 0
 
         binding.createRideButton.visibility = if (
             restoreCreateRideButton && shouldShowPrimaryActionButton()
@@ -812,7 +976,13 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             mapHomePrimaryActionButton(
                 selectedRide = selectedRide,
                 onCreateRideClick = ::handleCreateRideClick,
-                onJoinRideClick = ::handleJoinRideClick
+                onJoinRideClick = ::handleJoinRideClick,
+                bookingStatus = activeBookingStatus,
+                isBookingLoading = isBookingLoading,
+                onCancelBookingClick = ::handleCancelBookingClick,
+                onViewRequestsClick = ::handleViewRequestsClick,
+                pendingRequestCount = pendingBookingRequestCount,
+                isOwnRide = isSelectedRideDriver
             )
         }
     }
@@ -855,6 +1025,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun showHistoryContent() {
+        stopInProcessTrackingSync()
         animateMainContentTransition()
         isHistoryVisible = true
         isRideDetailVisible = false
@@ -863,12 +1034,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
+        isRideDetailOpenedFromMap = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
-        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
-            context = this,
-            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
-        )
         binding.historyContent.visibility = View.VISIBLE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
@@ -876,6 +1044,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bookingRequestsContent.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
         binding.predictionsCard.visibility = View.GONE
@@ -883,10 +1052,35 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.mapTouchOverlay.visibility = View.GONE
         binding.createRideButton.visibility = View.GONE
         clearRideDetailSelection()
+        historyPendingBookingRequestCount = 0
+
+        lifecycleScope.launch {
+            val currentUserId = SessionManager.getCurrentUserId(this@RootHostActivity)
+            val userLatLng = currentLatLng
+
+            // Hosted rides (user is the driver)
+            val myRides = rideRepository.getMyRides()
+
+            // Joined rides (user has a booking as a passenger)
+            val myBookings = bookingRepository.getMyBookings().getOrElse { emptyList() }
+            val joinedRides = myBookings.mapNotNull { booking ->
+                val post = booking.post_id ?: return@mapNotNull null
+                post.toRideListItem(userLatLng, currentUserId).copy(
+                    bookingId     = booking.id,
+                    bookingStatus = normaliseBookingStatus(booking.status)
+                )
+            }
+
+            val apiRides = (myRides + joinedRides)
+                .distinctBy { it.postId.ifEmpty { "${it.meetupLabel}|${it.destinationLabel}|${it.meetupDateTimeLabel}" } }
+
+            historyRideItems = apiRides
+        }
         clearMeetupLocationMarkers()
     }
 
     private fun showMapContent() {
+        stopInProcessTrackingSync()
         animateMainContentTransition()
         isHistoryVisible = false
         isRideDetailVisible = false
@@ -895,6 +1089,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
+        isRideDetailOpenedFromMap = false
         binding.historyContent.visibility = View.GONE
         binding.rideDetailContent.visibility = View.GONE
         binding.profileContent.visibility = View.GONE
@@ -902,6 +1097,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bookingRequestsContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.VISIBLE
         binding.predictionsCard.visibility = View.GONE
@@ -916,6 +1112,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun showProfileContent() {
+        stopInProcessTrackingSync()
         animateMainContentTransition()
         isHistoryVisible = false
         isRideDetailVisible = false
@@ -924,6 +1121,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
+        isRideDetailOpenedFromMap = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
@@ -933,6 +1131,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bookingRequestsContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
@@ -942,9 +1141,11 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         clearRideDetailSelection()
         clearMeetupLocationMarkers()
         selectedHistoryRide = null
+        historyPendingBookingRequestCount = 0
     }
 
     private fun showRideDetailContent() {
+        stopInProcessTrackingSync()
         animateMainContentTransition()
         isHistoryVisible = false
         isRideDetailVisible = true
@@ -962,6 +1163,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bookingRequestsContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
@@ -981,6 +1183,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
+        isRideDetailOpenedFromMap = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         hasLocallyDetectedTripEnd = false
@@ -991,6 +1194,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bookingRequestsContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
@@ -1000,14 +1204,27 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         clearRideDetailSelection()
         clearMeetupLocationMarkers()
         selectedHistoryRide = null
+        trackedInProcessLatLng = currentLatLng
 
-        val currentUserId = SessionManager.getCurrentUserId(this)
-        val ongoingRide = MockData.ongoingRideForUser(currentUserId)
+        val ride = activeInProcessRide
         requestRideInProcessRoutes(
             current = currentLatLng,
-            meetup = ongoingRide?.meetupLatLng,
-            destination = ongoingRide?.destinationLatLng
+            meetup = ride?.meetupLatLng,
+            destination = ride?.destinationLatLng
         )
+
+        // Fetch confirmed passenger names for the active ride.
+        val postUuid = ride?.postUuid
+        if (!postUuid.isNullOrBlank()) {
+            lifecycleScope.launch {
+                val bookings = bookingRepository.getBookingsForPost(postUuid).getOrNull().orEmpty()
+                activeRidePassengerNames = bookings
+                    .filter { it.status == "confirmed" }
+                    .mapNotNull { it.passenger_id?.fullName }
+            }
+        }
+
+        startInProcessTrackingSync()
     }
 
     private fun requestRideInProcessRoutes(
@@ -1059,6 +1276,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun showCreateRideContent() {
+        stopInProcessTrackingSync()
         animateMainContentTransition()
         isHistoryVisible = false
         isRideDetailVisible = false
@@ -1067,6 +1285,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRidePaymentVisible = false
         isCreateRideVisible = true
         isGroupChatVisible = false
+        isRideDetailOpenedFromMap = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
@@ -1076,6 +1295,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.VISIBLE
         binding.groupChatContent.visibility = View.GONE
+        binding.bookingRequestsContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
@@ -1096,6 +1316,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun showGroupChatContent() {
+        stopInProcessTrackingSync()
         animateMainContentTransition()
         isHistoryVisible = false
         isRideDetailVisible = false
@@ -1104,6 +1325,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = true
+        isRideDetailOpenedFromMap = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
@@ -1113,6 +1335,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.VISIBLE
+        binding.bookingRequestsContent.visibility = View.GONE
         binding.bottomNav.visibility = View.GONE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
@@ -1123,16 +1346,40 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         clearMeetupLocationMarkers()
         selectedHistoryRide = null
 
-        val currentUserId = SessionManager.getCurrentUserId(this)
-        groupChatMessages = MockData.groupChatMessagesForUser(currentUserId)
-        groupChatParticipants = MockData.groupChatParticipantsForUser(currentUserId)
-            .map { user -> user.name }
+        val postId = activeInProcessRide?.postId
+        if (postId.isNullOrBlank()) {
+            groupChatMessages = emptyList()
+            groupChatParticipants = emptyList()
+            return
+        }
+
+        // Build participant list from the active ride host + passenger names.
+        val hostName = activeInProcessRide?.hostName.orEmpty()
+        groupChatParticipants = (listOf(hostName) + activeRidePassengerNames).filter { it.isNotBlank() }
+
+        // Load message history via REST.
+        currentChatPostId = postId
+        lifecycleScope.launch {
+            val messages = runCatching {
+                ApiClient.create<MessagesService>(this@RootHostActivity)
+                    .getMessages(postId)
+            }.getOrNull().orEmpty()
+            groupChatMessages = messages.toMockChatMessages()
+        }
+
+        // Connect Socket.IO for real-time messages.
+        chatSocketManager?.disconnect()
+        chatSocketManager = ChatSocketManager(applicationContext)
+        chatSocketManager?.connect(postId) { newMessage ->
+            // Avoid duplicates from our own sends echoed back.
+            groupChatMessages = groupChatMessages + newMessage
+        }
     }
 
-    private fun showRidePaymentContent(ride: MockRide, isHost: Boolean) {
+    private fun showRidePaymentContent(isHost: Boolean) {
+        stopInProcessTrackingSync()
         animateMainContentTransition()
         selectedBottomNavItem = MapsBottomNavItem.RIDES
-        pendingPaymentRide = ride
         isPendingPaymentHost = isHost
         isHistoryVisible = false
         isRideDetailVisible = false
@@ -1141,6 +1388,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         isRidePaymentVisible = true
         isCreateRideVisible = false
         isGroupChatVisible = false
+        isRideDetailOpenedFromMap = false
         isRidePanelVisible = false
         isRidePanelExpanded = false
         binding.historyContent.visibility = View.GONE
@@ -1150,6 +1398,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         binding.ridePaymentContent.visibility = View.VISIBLE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bookingRequestsContent.visibility = View.GONE
         binding.bottomNav.visibility = View.VISIBLE
         binding.searchBarContainer.visibility = View.GONE
         binding.predictionsCard.visibility = View.GONE
@@ -1162,18 +1411,61 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun completeRideAfterPayment() {
-        val currentUserId = SessionManager.getCurrentUserId(this)
-        MockData.completeOngoingRide(currentUserId)
-        pendingPaymentRide = null
+        stopInProcessTrackingSync()
+        chatSocketManager?.disconnect()
+        currentChatPostId = null
+        activeInProcessRide = null
+        activeRidePassengerNames = emptyList()
         isPendingPaymentHost = false
-        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
-            context = this,
-            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
-        )
         Toast.makeText(this, getString(R.string.trip_end), Toast.LENGTH_SHORT).show()
         reset()
         selectedBottomNavItem = MapsBottomNavItem.RIDES
         showHistoryContent()
+    }
+
+    /**
+     * Called when a passenger taps "Confirm & Pay" on the payment screen.
+     * Submits feedback to the API and optionally creates a payment record.
+     */
+    private fun handlePassengerPaymentConfirm(rating: Int, comment: String) {
+        val ride = activeInProcessRide
+        val currentUserId = SessionManager.getCurrentUserId(this).orEmpty()
+
+        if (ride != null && ride.postId.isNotBlank() && ride.hostUserId.isNotBlank()) {
+            lifecycleScope.launch {
+                // Submit feedback.
+                runCatching {
+                    ApiClient.create<FeedbackService>(this@RootHostActivity)
+                        .createFeedback(
+                            ApiCreateFeedbackRequest(
+                                post_id = ride.postId,
+                                reviewer_id = currentUserId,
+                                reviewee_id = ride.hostUserId,
+                                rating = rating,
+                                comment = comment.ifBlank { null }
+                            )
+                        )
+                }
+
+                // Create payment record if the user has a booking.
+                val bookingId = ride.bookingId
+                if (!bookingId.isNullOrBlank()) {
+                    runCatching {
+                        ApiClient.create<PaymentsService>(this@RootHostActivity)
+                            .createPayment(
+                                ApiCreatePaymentRequest(
+                                    booking_id = bookingId,
+                                    amount = ride.pricePerSeat,
+                                    status = "completed",
+                                    payment_type = "cash"
+                                )
+                            )
+                    }
+                }
+            }
+        }
+
+        completeRideAfterPayment()
     }
 
     private fun handleCreateRideClick() {
@@ -1193,45 +1485,63 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun handleCreateRideSubmit(submission: CreateRideSubmission) {
-        val currentUserId = SessionManager.getCurrentUserId(this)
-        val createdRide = MockData.addCreatedRide(submission, currentUserId)
-        var isStartedAsOngoing = false
+        lifecycleScope.launch {
+            val apiItem = rideRepository.createRide(submission)
 
-        if (shouldAutoStartCreatedRide(createdRide.meetupDateLabel, createdRide.meetupTimeLabel)) {
-            isStartedAsOngoing = MockData.startOngoingRide(
-                userId = currentUserId,
-                meetupLabel = createdRide.meetupLabel,
-                destinationLabel = createdRide.destinationLabel,
-                meetupDateTimeLabel = createdRide.meetupDateTimeLabel,
-                hostName = createdRide.host.name
-            )
-            if (isStartedAsOngoing) {
-                sendRideOngoingNotification()
+            if (apiItem != null) {
+                showMapContent()
+                applySelectedPlace(apiItem.destinationLabel, apiItem.destinationLatLng)
+                Toast.makeText(this@RootHostActivity, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@RootHostActivity, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
             }
-        }
-
-        historyRideItems = RideHistoryProvider.loadCurrentUserHistoryRides(
-            context = this,
-            pickupDistanceMetersForMeetup = ::calculatePickupDistanceMeters
-        )
-
-        createRideDestination = createdRide.destinationLabel
-        createRideDestinationLatLng = createdRide.destinationLatLng
-
-        if (isStartedAsOngoing) {
-            showRideInProcessContent()
-        } else {
-            showMapContent()
-            applySelectedPlace(createdRide.destinationLabel, createdRide.destinationLatLng)
-            Toast.makeText(this, getString(R.string.create_ride), Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun handleNavigationIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_OPEN_RIDE_IN_PROCESS, false) == true) {
             selectedBottomNavItem = MapsBottomNavItem.RIDES
-            showRideInProcessContent()
+            // Try to resolve an ongoing ride from the API.
+            lifecycleScope.launch {
+                resolveActiveInProcessRide()
+                showRideInProcessContent()
+            }
             intent.removeExtra(EXTRA_OPEN_RIDE_IN_PROCESS)
+        }
+    }
+
+    /**
+     * Attempts to resolve the current user's in-progress ride from the API
+     * and set [activeInProcessRide].  Checks both hosted and joined rides.
+     */
+    private suspend fun resolveActiveInProcessRide() {
+        if (activeInProcessRide != null) return
+
+        val currentUserId = SessionManager.getCurrentUserId(this).orEmpty()
+
+        // Check hosted rides.
+        val myRides = rideRepository.getMyRides()
+        val hostedOngoing = myRides.firstOrNull { it.lifecycleStatus == RideLifecycleStatus.ONGOING }
+        if (hostedOngoing != null) {
+            activeInProcessRide = hostedOngoing
+            return
+        }
+
+        // Check joined rides (via bookings).
+        val bookings = bookingRepository.getMyBookings().getOrNull().orEmpty()
+        val joinedOngoing = bookings
+            .filter { it.status == "confirmed" }
+            .mapNotNull { booking ->
+                booking.post_id?.takeIf { it.status == "in_progress" }
+                    ?.toRideListItem(currentUserLatLng = currentLatLng, currentUserId = currentUserId)
+                    ?.copy(
+                        bookingId = booking.id,
+                        bookingStatus = normaliseBookingStatus(booking.status)
+                    )
+            }
+            .firstOrNull()
+        if (joinedOngoing != null) {
+            activeInProcessRide = joinedOngoing
         }
     }
 
@@ -1279,15 +1589,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             .build()
 
         NotificationManagerCompat.from(this).notify(RIDE_ONGOING_NOTIFICATION_ID, notification)
-    }
-
-    private fun shouldAutoStartCreatedRide(meetupDate: String, meetupTime: String): Boolean {
-        val scheduledAtMillis = RideDateTimeFormatter.parseSubmissionMeetupToEpochMillis(
-            meetupDate.trim(),
-            meetupTime.trim()
-        )
-            ?: return false
-        return scheduledAtMillis <= System.currentTimeMillis()
     }
 
     private fun handleCreateRideFocusChanged(field: CreateRideLocationField, hasFocus: Boolean) {
@@ -1474,39 +1775,141 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun handleJoinRideClick() {
-        selectedRide?.let {
-            val currentUserId = SessionManager.getCurrentUserId(this)
-            if (MockData.hasOngoingRide(currentUserId)) {
-                Toast.makeText(this, getString(R.string.one_ongoing_ride_only), Toast.LENGTH_SHORT).show()
-                return
-            }
+        val ride = selectedRide ?: return
+        if (ride.postUuid.isEmpty()) {
+            Toast.makeText(this, getString(R.string.booking_error_generic), Toast.LENGTH_SHORT).show()
+            return
+        }
 
-            val joinedRide = MockData.joinRide(
-                userId = currentUserId,
-                meetupLabel = it.meetupLabel,
-                destinationLabel = it.destinationLabel,
-                meetupDateTimeLabel = it.meetupDateTimeLabel,
-                hostName = it.hostName
+        // Real API ride — create a booking
+        isBookingLoading = true
+        lifecycleScope.launch {
+            val result = bookingRepository.createBooking(ride.postUuid)
+            isBookingLoading = false
+            result.fold(
+                onSuccess = { booking ->
+                    activeBookingId     = booking.id
+                    activeBookingStatus = booking.status
+                    Toast.makeText(
+                        this@RootHostActivity,
+                        getString(R.string.booking_sent_success),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                },
+                onFailure = {
+                    val msg = extractApiErrorMessage(it) ?: it.message.orEmpty()
+                    val userMsg = when {
+                        msg.contains("own ride", ignoreCase = true) ->
+                            getString(R.string.booking_error_own_ride)
+                        msg.contains("already", ignoreCase = true) ->
+                            getString(R.string.booking_error_already_booked)
+                        msg.contains("seats", ignoreCase = true) ->
+                            getString(R.string.booking_error_no_seats)
+                        else -> getString(R.string.booking_error_generic)
+                    }
+                    Toast.makeText(this@RootHostActivity, userMsg, Toast.LENGTH_SHORT).show()
+                }
             )
+        }
+    }
 
-            if (joinedRide == null) {
-                Toast.makeText(this, getString(R.string.unable_to_join_ride), Toast.LENGTH_SHORT).show()
-                return
-            }
+    private fun extractApiErrorMessage(error: Throwable): String? {
+        val http = error as? HttpException ?: return null
+        val raw = runCatching { http.response()?.errorBody()?.string() }.getOrNull() ?: return null
+        return runCatching { JSONObject(raw).optString("message") }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
 
-            val started = MockData.startOngoingRide(
-                userId = currentUserId,
-                meetupLabel = it.meetupLabel,
-                destinationLabel = it.destinationLabel,
-                meetupDateTimeLabel = it.meetupDateTimeLabel,
-                hostName = it.hostName
+    private fun handleCancelBookingClick() {
+        val bookingId = activeBookingId ?: return
+        isBookingLoading = true
+        lifecycleScope.launch {
+            val result = bookingRepository.cancelBooking(bookingId)
+            isBookingLoading = false
+            result.fold(
+                onSuccess = {
+                    activeBookingId     = null
+                    activeBookingStatus = null
+                    Toast.makeText(
+                        this@RootHostActivity,
+                        getString(R.string.booking_cancel_success),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                },
+                onFailure = {
+                    Toast.makeText(
+                        this@RootHostActivity,
+                        getString(R.string.booking_error_generic),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             )
-            if (!started) {
-                Toast.makeText(this, getString(R.string.unable_to_start_ride), Toast.LENGTH_SHORT).show()
-                return
-            }
+        }
+    }
 
-            showRideInProcessContent()
+    private fun handleViewRequestsClick() {
+        val ride = selectedRide ?: return
+        val currentUserId = SessionManager.getCurrentUserId(this).orEmpty()
+        val iAmDriver = (ride.hostUserId.isNotBlank() && ride.hostUserId == currentUserId) ||
+            ride.participationRole == RideParticipationRole.HOSTED
+        if (!iAmDriver || ride.postUuid.isEmpty()) return
+
+        isRideDetailOpenedFromMap = true
+        selectedHistoryRide = ride
+        historyPendingBookingRequestCount = 0
+        bookingRequestItems = emptyList()
+        bookingRequestsPostUuid = ride.postUuid
+        loadBookingRequestsForPost(ride.postUuid)
+        showRideDetailContent()
+    }
+
+    private fun handleAcceptBooking(bookingId: String) {
+        lifecycleScope.launch {
+            val result = bookingRepository.respondToBooking(bookingId, accept = true)
+            result.fold(
+                onSuccess = { updated ->
+                    // Refresh booking list
+                    val postUuid = bookingRequestsPostUuid.orEmpty()
+                    if (postUuid.isNotEmpty()) loadBookingRequestsForPost(postUuid)
+                    Toast.makeText(
+                        this@RootHostActivity,
+                        getString(R.string.booking_respond_accept_success),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                },
+                onFailure = {
+                    Toast.makeText(
+                        this@RootHostActivity,
+                        getString(R.string.booking_error_generic),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
+        }
+    }
+
+    private fun handleRejectBooking(bookingId: String) {
+        lifecycleScope.launch {
+            val result = bookingRepository.respondToBooking(bookingId, accept = false)
+            result.fold(
+                onSuccess = {
+                    val postUuid = bookingRequestsPostUuid.orEmpty()
+                    if (postUuid.isNotEmpty()) loadBookingRequestsForPost(postUuid)
+                    Toast.makeText(
+                        this@RootHostActivity,
+                        getString(R.string.booking_respond_reject_success),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                },
+                onFailure = {
+                    Toast.makeText(
+                        this@RootHostActivity,
+                        getString(R.string.booking_error_generic),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
         }
     }
 
@@ -1636,7 +2039,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         moveSearchBarToTop()
         showRideResultsPanel()
         binding.createRideButton.visibility = View.VISIBLE
-        val rideItems = showFilteredRides(name, latLng)
+        loadAndFilterRidesByDestination(name, latLng)
 
         if (!isMapReady) {
             Toast.makeText(this, getString(R.string.generic_error), Toast.LENGTH_SHORT).show()
@@ -1646,42 +2049,35 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         destinationMarker?.remove()
         destinationMarker = addOriginDestinationMarkerAndGet(latLng)
         destinationMarker?.setAnchor(0.5f, 0.5f)
-        val nearestMeetupLatLng = rideItems.firstOrNull()?.meetupLatLng ?: latLng
-        animateCamera(nearestMeetupLatLng)
+        // Camera will be re-aimed at the nearest meetup after rides load inside the coroutine;
+        // animate to destination immediately as a default so the map responds right away.
+        animateCamera(latLng)
     }
 
-    private fun showFilteredRides(destinationName: String, destinationLatLng: LatLng): List<RideListItem> {
-        val normalizedDestination = destinationName.trim().lowercase(Locale.ROOT)
-        val rideItems = MockData.mockRides
-            .filter { ride ->
-                val rideDestination = ride.destinationLabel.lowercase(Locale.ROOT)
-                rideDestination == normalizedDestination ||
-                    normalizedDestination.contains(rideDestination) ||
-                    rideDestination.contains(normalizedDestination) ||
-                    calculateDistanceMeters(ride.destinationLatLng, destinationLatLng) <= 400f
-            }
-            .map { ride ->
-                RideListItem(
-                    meetupLabel = ride.meetupLabel,
-                    meetupLatLng = ride.meetupLatLng,
-                    destinationLabel = ride.destinationLabel,
-                    destinationLatLng = ride.destinationLatLng,
-                    pickupDistanceMeters = calculatePickupDistanceMeters(ride.meetupLatLng),
-                    meetupDateTimeLabel = ride.meetupDateTimeLabel,
-                    waitTimeMinutes = ride.waitTimeMinutes,
-                    hostName = ride.host.name,
-                    hostRating = ride.host.rating,
-                    hostVehicleType = ride.host.vehicleType,
-                    peopleCount = ride.peopleCount,
-                    maxPeopleCount = ride.maxPeopleCount
-                )
-            }
-            .sortedBy { it.pickupDistanceMeters }
+    /**
+     * Loads rides near [destinationLatLng] from the API and falls back to mock data
+     * when the API returns nothing (offline / dev mode).
+     * Updates [ridePanelItems], [allRidePanelItems], meetup markers, and camera in one pass.
+     */
+    private fun loadAndFilterRidesByDestination(destinationName: String, destinationLatLng: LatLng) {
+        lifecycleScope.launch {
+            val apiRides = rideRepository.getNearbyRides(
+                lat      = destinationLatLng.latitude,
+                lng      = destinationLatLng.longitude
+            )
 
-        ridePanelItems = rideItems
-        allRidePanelItems = rideItems
-        addMeetupLocationMarkers(rideItems)
-        return rideItems
+            val rides = apiRides
+
+            ridePanelItems    = rides
+            allRidePanelItems = rides
+            addMeetupLocationMarkers(rides)
+
+            // Re-aim camera once we know the nearest meetup location.
+            if (isMapReady) {
+                val nearestMeetup = rides.firstOrNull()?.meetupLatLng ?: destinationLatLng
+                animateCamera(nearestMeetup)
+            }
+        }
     }
 
     private fun calculatePickupDistanceMeters(meetupLatLng: LatLng): Float {
@@ -1702,8 +2098,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun resolveActiveRideDestination(): LatLng? {
-        val currentUserId = SessionManager.getCurrentUserId(this)
-        return MockData.ongoingRideForUser(currentUserId)?.destinationLatLng
+        return activeInProcessRide?.destinationLatLng
     }
 
     private fun maybeHandleLocalTripArrival(currentLocation: LatLng) {
@@ -1799,6 +2194,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                     }
 
                     maybeHandleLocalTripArrival(latestLatLng)
+                    pushTrackingIfNeeded(latestLatLng)
                 }
             }
         }
@@ -1812,15 +2208,19 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
 
     private fun reset() {
+        stopInProcessTrackingSync()
         // Restore map and UI to pre-booking default state.
         isRidePaymentVisible = false
         isCreateRideVisible = false
         isGroupChatVisible = false
+        isRideDetailOpenedFromMap = false
         binding.ridePaymentContent.visibility = View.GONE
         binding.createRideContent.visibility = View.GONE
         binding.groupChatContent.visibility = View.GONE
+        binding.bookingRequestsContent.visibility = View.GONE
         binding.createRideButton.visibility = View.GONE
-        pendingPaymentRide = null
+        activeInProcessRide = null
+        trackedInProcessLatLng = null
         isPendingPaymentHost = false
         groupChatMessages = emptyList()
         groupChatParticipants = emptyList()
@@ -1875,6 +2275,9 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     override fun onDestroy() {
+        stopInProcessTrackingSync()
+        chatSocketManager?.disconnect()
+        chatSocketManager = null
         presenter?.onDetach()
         if (::locationCallback.isInitialized) {
             fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
@@ -1916,6 +2319,78 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun moveSearchBarToBottom() {
         searchUiCoordinator.moveSearchBarToBottom()
+    }
+
+    private fun isActiveRideHost(): Boolean {
+        val ride = activeInProcessRide ?: return false
+        val currentUserId = SessionManager.getCurrentUserId(this).orEmpty()
+        return ride.participationRole == RideParticipationRole.HOSTED ||
+            (currentUserId.isNotBlank() && ride.hostUserId == currentUserId)
+    }
+
+    private fun startInProcessTrackingSync() {
+        stopInProcessTrackingSync()
+        if (BuildConfig.USE_SIMULATOR) return
+
+        val ride = activeInProcessRide ?: return
+        val postId = ride.postId.ifBlank { return }
+
+        if (isActiveRideHost()) {
+            trackedInProcessLatLng = currentLatLng
+            return
+        }
+
+        trackingPollJob = lifecycleScope.launch {
+            while (isActive && isRideInProcessVisible) {
+                val tracking = runCatching {
+                    trackingService.getTracking(postId)
+                }.getOrNull()
+
+                if (tracking != null) {
+                    val trackedLatLng = LatLng(tracking.current_lat, tracking.current_lng)
+                    trackedInProcessLatLng = trackedLatLng
+                    requestRideInProcessRoutes(
+                        current = trackedLatLng,
+                        meetup = ride.meetupLatLng,
+                        destination = ride.destinationLatLng
+                    )
+                    maybeHandleLocalTripArrival(trackedLatLng)
+                }
+
+                delay(3000L)
+            }
+        }
+    }
+
+    private fun stopInProcessTrackingSync() {
+        trackingPollJob?.cancel()
+        trackingPollJob = null
+        trackedInProcessLatLng = null
+    }
+
+    private fun pushTrackingIfNeeded(latestLatLng: LatLng) {
+        if (BuildConfig.USE_SIMULATOR || !isRideInProcessVisible) return
+        if (!isActiveRideHost()) return
+
+        val ride = activeInProcessRide ?: return
+        val postId = ride.postId.ifBlank { return }
+        val now = System.currentTimeMillis()
+        if (now - lastTrackingPushAtMillis < 2000L) return
+        lastTrackingPushAtMillis = now
+        trackedInProcessLatLng = latestLatLng
+
+        lifecycleScope.launch {
+            runCatching {
+                trackingService.updateTracking(
+                    postId,
+                    ApiUpdateTrackingRequest(
+                        current_lat = latestLatLng.latitude,
+                        current_lng = latestLatLng.longitude,
+                        eta_minutes = null
+                    )
+                )
+            }
+        }
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
@@ -1972,16 +2447,27 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     override fun informTripEnd() {
         hasLocallyDetectedTripEnd = true
         val currentUserId = SessionManager.getCurrentUserId(this)
-        val ongoingRide = MockData.ongoingRideForUser(currentUserId)
-        if (ongoingRide == null) {
+        val ride = activeInProcessRide
+        if (ride == null) {
             Toast.makeText(this, getString(R.string.trip_end), Toast.LENGTH_SHORT).show()
             reset()
             return
         }
-        showRidePaymentContent(
-            ride = ongoingRide,
-            isHost = ongoingRide.host.id == currentUserId
-        )
+
+        val isHost = ride.participationRole == RideParticipationRole.HOSTED
+                || ride.hostUserId == currentUserId
+
+        // Mark the post as completed via API (fire-and-forget).
+        if (isHost && ride.postId.isNotBlank()) {
+            lifecycleScope.launch {
+                runCatching {
+                    ApiClient.create<PostsService>(this@RootHostActivity)
+                        .updateStatus(ride.postId, ApiUpdateStatusRequest("completed"))
+                }
+            }
+        }
+
+        showRidePaymentContent(isHost = isHost)
     }
 
     override fun showRoutesNotAvailableError() {

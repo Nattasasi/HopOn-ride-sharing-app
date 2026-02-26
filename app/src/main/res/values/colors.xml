@@ -3,6 +3,8 @@
     <color name="colorPrimary">#1896F2</color>  <!-- Updated to a more vibrant blue -->
     <color name="colorPrimaryDark">#9B9B9B</color> <!-- Updated to a more neutral dark grey -->
     <color name="colorAccent">#FFCC00</color> <!-- Bright yellow accent color -->
+    <color name="badgeGreenBackground">#D4EDDA</color>
+    <color name="badgeGreenText">#155724</color>
     <color name="light_grey">#80DCDCDC</color>
     <color name="cancelRideRed">#F6615A</color>
 </resources>

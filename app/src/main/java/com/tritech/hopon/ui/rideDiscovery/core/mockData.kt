@@ -54,6 +54,7 @@ data class CreateRideSubmission(
     val meetupTime: String,
     val waitTimeMinutes: Int,
     val maxPeopleCount: Int,
+    val pricePerSeat: Double = 0.0,
     val vehicleInfo: String,
     val contactInfo: String,
     val additionalNotes: String

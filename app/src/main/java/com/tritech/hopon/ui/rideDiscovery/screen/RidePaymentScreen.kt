@@ -62,6 +62,8 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.tritech.hopon.R
+import com.tritech.hopon.ui.components.HopOnBadgeTone
+import com.tritech.hopon.ui.components.hopOnBadgeColors
 import com.tritech.hopon.ui.components.hopOnButton
 import com.tritech.hopon.ui.components.statusBadge
 import com.tritech.hopon.utils.MapUtils
@@ -88,7 +90,7 @@ fun ridePaymentScreen(
     pickupRoutePoints: List<LatLng>,
     rideRoutePoints: List<LatLng>,
     onHostFinishClick: () -> Unit,
-    onPassengerConfirmClick: () -> Unit
+    onPassengerConfirmClick: (rating: Int, comment: String) -> Unit
 ) {
     val paymentStatuses = remember(passengerNames) {
         mutableStateMapOf<String, PaymentStatus>().apply {
@@ -173,7 +175,7 @@ fun ridePaymentScreen(
             } else {
                 stringResource(id = R.string.ride_payment_confirm_passenger)
             },
-            onClick = if (isHost) onHostFinishClick else onPassengerConfirmClick,
+            onClick = if (isHost) onHostFinishClick else { { onPassengerConfirmClick(rating, comment) } },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -417,30 +419,28 @@ private fun hostPaymentSection(
 
 @Composable
 private fun paymentStatusChip(status: PaymentStatus) {
-    val (label, bgColor, textColor) = when (status) {
-        PaymentStatus.WAITING -> Triple(
+    val (label, tone) = when (status) {
+        PaymentStatus.WAITING -> Pair(
             R.string.ride_payment_status_waiting,
-            colorResource(id = R.color.colorAccent).copy(alpha = 0.18f),
-            colorResource(id = R.color.colorAccent)
+            HopOnBadgeTone.YELLOW
         )
 
-        PaymentStatus.APPROVED -> Triple(
+        PaymentStatus.APPROVED -> Pair(
             R.string.ride_payment_status_approved,
-            Color(0xFFD3F5DF),
-            Color(0xFF0B8B4B)
+            HopOnBadgeTone.GREEN
         )
 
-        PaymentStatus.DECLINED -> Triple(
+        PaymentStatus.DECLINED -> Pair(
             R.string.ride_payment_status_declined,
-            Color(0xFFF7D8D8),
-            Color(0xFFB43A3A)
+            HopOnBadgeTone.BLUE
         )
     }
+    val colors = hopOnBadgeColors(tone)
 
     statusBadge(
         text = stringResource(id = label),
-        backgroundColor = bgColor,
-        textColor = textColor
+        backgroundColor = colors.backgroundColor,
+        textColor = colors.textColor
     )
 }
 

@@ -58,6 +58,7 @@ fun rideResultsBottomSheetPanel(
     onExpandChange: (Boolean) -> Unit,
     rides: List<RideListItem>,
     selectedRide: RideListItem?,
+    currentUserId: String?,
     currentUserName: String,
     onRideClick: (RideListItem) -> Unit
 ) {
@@ -217,6 +218,8 @@ fun rideResultsBottomSheetPanel(
                                             meetupDateTimeLabel = ride.meetupDateTimeLabel,
                                             pickupDistanceMeters = ride.pickupDistanceMeters,
                                             hostName = ride.hostName,
+                                            hostUserId = ride.hostUserId,
+                                            currentUserId = currentUserId,
                                             currentUserName = currentUserName,
                                             waitTimeMinutes = ride.waitTimeMinutes,
                                             peopleCount = ride.peopleCount,

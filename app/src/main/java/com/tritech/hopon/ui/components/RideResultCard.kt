@@ -26,7 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,7 +38,6 @@ import com.tritech.hopon.ui.rideDiscovery.core.RideParticipationRole
 import java.util.Locale
 
 private const val RideCardIconScale = 1.8f
-private const val RideRoleBadgeBackgroundAlpha = 0.18f
 
 @Composable
 fun rideResultCard(
@@ -47,6 +45,8 @@ fun rideResultCard(
     meetupDateTimeLabel: String,
     pickupDistanceMeters: Float,
     hostName: String,
+    hostUserId: String? = null,
+    currentUserId: String? = null,
     currentUserName: String? = null,
     waitTimeMinutes: Int,
     peopleCount: Int,
@@ -62,10 +62,12 @@ fun rideResultCard(
     val (meetupDate, meetupTime) = splitMeetupDateTime(meetupDateTimeLabel)
     val distanceText = formatDistanceLabel(pickupDistanceMeters)
     val rideTimeText = formatRideTimeLabel(rideTimeMinutes)
-    val displayedHostName = if (
-        !currentUserName.isNullOrBlank() &&
-        hostName.trim().equals(currentUserName.trim(), ignoreCase = true)
-    ) {
+    val isCurrentUserHost = when {
+        !currentUserId.isNullOrBlank() && !hostUserId.isNullOrBlank() -> hostUserId == currentUserId
+        !currentUserName.isNullOrBlank() -> hostName.trim().equals(currentUserName.trim(), ignoreCase = true)
+        else -> false
+    }
+    val displayedHostName = if (isCurrentUserHost) {
         stringResource(id = R.string.me_label)
     } else {
         hostName
@@ -216,9 +218,9 @@ private fun formatRideTimeLabel(rideTimeMinutes: Int?): String {
 
 @Composable
 private fun rideRoleBadge(role: RideParticipationRole) {
-    val roleColor = when (role) {
-        RideParticipationRole.JOINED -> colorResource(id = R.color.colorPrimary)
-        RideParticipationRole.HOSTED -> colorResource(id = R.color.colorAccent)
+    val roleBadgeColors = when (role) {
+        RideParticipationRole.JOINED -> hopOnBadgeColors(HopOnBadgeTone.BLUE)
+        RideParticipationRole.HOSTED -> hopOnBadgeColors(HopOnBadgeTone.YELLOW)
     }
     val roleText = when (role) {
         RideParticipationRole.JOINED -> stringResource(id = R.string.ride_role_joined)
@@ -227,17 +229,9 @@ private fun rideRoleBadge(role: RideParticipationRole) {
 
     statusBadge(
         text = roleText,
-        backgroundColor = roleColor.copy(alpha = RideRoleBadgeBackgroundAlpha),
-        textColor = roleTextColor(roleColor)
+        backgroundColor = roleBadgeColors.backgroundColor,
+        textColor = roleBadgeColors.textColor
     )
-}
-
-private fun roleTextColor(backgroundSeed: Color): Color {
-    return if (backgroundSeed.luminance() > 0.7f) {
-        Color.Black
-    } else {
-        backgroundSeed
-    }
 }
 
 @Composable

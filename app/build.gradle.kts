@@ -38,6 +38,17 @@ android {
                 "routes_api_key",
                 localProp("routesApiKey") ?: ""
             )
+            // Inject API base URL into BuildConfig for network layer.
+            buildConfigField(
+                "String",
+                "API_BASE_URL",
+                "\"${localProp("apiBaseUrl") ?: "http://10.0.2.2:3001/api/v1/"}\""
+            )
+            buildConfigField(
+                "Boolean",
+                "USE_SIMULATOR",
+                "${localProp("useSimulator") ?: "true"}"
+            )
         }
         release {
             // Provide production build with the same key injection source.
@@ -50,6 +61,17 @@ android {
                 "string",
                 "routes_api_key",
                 localProp("routesApiKey") ?: ""
+            )
+            // Inject API base URL into BuildConfig for network layer.
+            buildConfigField(
+                "String",
+                "API_BASE_URL",
+                "\"${localProp("apiBaseUrl") ?: "http://10.0.2.2:3001/api/v1/"}\""
+            )
+            buildConfigField(
+                "Boolean",
+                "USE_SIMULATOR",
+                "${localProp("useSimulator") ?: "true"}"
             )
             isMinifyEnabled = false
             proguardFiles(
@@ -113,6 +135,25 @@ dependencies {
     // Location and turn-by-turn/navigation SDKs.
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.google.android.libraries.navigation:navigation:latest.release")
+
+    // Networking — Retrofit + OkHttp + Gson converter.
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // Coroutines support for Retrofit suspend functions.
+    implementation("com.jakewharton.retrofit:retrofit2-kotlin-coroutines-adapter:0.9.2")
+
+    // Socket.IO client for real-time chat (Phase 7).
+    implementation("io.socket:socket.io-client:2.1.1") {
+        // Exclude org.json which is provided by Android framework.
+        exclude(group = "org.json", module = "json")
+    }
+
+    // Coroutines runtime + lifecycle scope for Activities/Fragments.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
 
     // Unit and instrumentation testing libraries.
     testImplementation("junit:junit:4.13.2")
