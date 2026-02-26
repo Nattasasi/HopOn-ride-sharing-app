@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.google.gson.Gson
-import com.tritech.hopon.BuildConfig
 import com.tritech.hopon.utils.SessionManager
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -45,7 +44,7 @@ class ChatSocketManager(private val context: Context) {
         disconnect()
         currentPostId = postId
 
-        val socketUrl = BuildConfig.API_BASE_URL
+        val socketUrl = ApiBaseUrlResolver.resolve()
             .replace("/api/v1/", "")
             .replace("/api/v1", "")
             .trimEnd('/')
