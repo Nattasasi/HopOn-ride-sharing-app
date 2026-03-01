@@ -1,3 +1,4 @@
 local.properties
 .github/copilot-instructions.md
 .env
+.env.example
