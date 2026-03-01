@@ -54,14 +54,14 @@ Keep this terminal open.
 Edit `/Users/nattasasi/Documents/SeniorProject_1/HopOn/local.properties` and set:
 
 ```properties
-apiBaseUrlEmulator=http://10.0.2.2:3001/api/v1/
-apiBaseUrlDevice=https://YOUR_CURRENT_TRYCLOUDFLARE_URL/api/v1/
 apiBaseUrl=https://YOUR_CURRENT_TRYCLOUDFLARE_URL/api/v1/
+apiBaseUrlDevice=https://YOUR_CURRENT_TRYCLOUDFLARE_URL/api/v1/
 ```
 
 Important:
-- `apiBaseUrlDevice` and `apiBaseUrl` must be updated every time tunnel URL changes.
-- The app auto-selects emulator vs device URL at runtime.
+- `apiBaseUrl` is the value used by the Android app at runtime.
+- `apiBaseUrlDevice` is kept for convenience by tooling/scripts.
+- Update both values every time the tunnel URL changes.
 
 ## 6) Build + install app
 
@@ -159,3 +159,63 @@ This script will:
 - start Cloudflare quick tunnel
 - update `local.properties` with the current tunnel URL
 - install the debug app
+
+## 12) Live DB test flow: ride completion on physical device
+
+Use this flow to verify booking lifecycle, in-process ride, and payment/feedback against live backend data.
+
+### Accounts needed
+
+- 1 host/driver account
+- 1 passenger/rider account
+
+### End-to-end steps
+
+1. Log in as driver and create a new ride.
+2. Log in as passenger and request to join that ride.
+3. Log back in as driver, open ride detail, and accept the booking request.
+4. Move ride status to ongoing (API):
+
+```bash
+curl -X PATCH "https://YOUR_CURRENT_TRYCLOUDFLARE_URL/api/v1/posts/<POST_MONGO_ID>/status" \
+	-H "Authorization: Bearer <DRIVER_TOKEN>" \
+	-H "Content-Type: application/json" \
+	-d '{"status":"ongoing"}'
+```
+
+5. Verify app shows Ride In Process.
+6. Complete ride (API):
+
+```bash
+curl -X PATCH "https://YOUR_CURRENT_TRYCLOUDFLARE_URL/api/v1/posts/<POST_MONGO_ID>/status" \
+	-H "Authorization: Bearer <DRIVER_TOKEN>" \
+	-H "Content-Type: application/json" \
+	-d '{"status":"completed"}'
+```
+
+7. Verify payment/feedback screen behavior for host and passenger.
+
+### Notes
+
+- Some screens refresh on navigation events; if state does not refresh instantly, switch tabs or reopen ride detail.
+- Use host account for host-only actions (`/posts/me`, booking approvals), rider account for passenger-only actions (`/bookings/me`).
+
+## 13) Current UI behavior checks (quick)
+
+Use this checklist after install to ensure current UX behavior is intact:
+
+1. Bottom nav separator
+	- Verify a thin gray line appears at the top edge of the bottom nav bar.
+
+2. Screen transitions
+	- Tab switches (Home ↔ History ↔ Profile): instant, no fade.
+	- In-tab navigation (detail/create/in-process/group-chat/payment): horizontal slide transition.
+
+3. Tap blank area to dismiss keyboard
+	- Login, Register, Create Ride, Group Chat: tapping non-input area should clear focus and hide keyboard.
+
+4. Ride detail participants
+	- Host appears in participant list (as "Me" for own hosted ride).
+	- Confirmed riders appear in participant list.
+	- Pending riders appear in separate read-only subsection for host view.
+	- Host booking-request Accept/Reject cards remain functional.

@@ -35,6 +35,14 @@ for pid in $(lsof -ti tcp:3001 2>/dev/null || true); do
   kill -9 "$pid" || true
 done
 
+echo "🔄 Clearing existing cloudflared tunnels..."
+for pid in $(pgrep -f "cloudflared tunnel --url http://localhost:3001" 2>/dev/null || true); do
+  kill -9 "$pid" || true
+done
+
+: >"$BACKEND_LOG"
+: >"$TUNNEL_LOG"
+
 echo "🚀 Starting backend..."
 cd "$BACKEND_DIR"
 nohup node app.js >"$BACKEND_LOG" 2>&1 &
@@ -54,12 +62,12 @@ if ! lsof -ti tcp:3001 >/dev/null 2>&1; then
 fi
 
 echo "🌐 Starting Cloudflare tunnel..."
-nohup cloudflared tunnel --url http://localhost:3001 --logfile "$TUNNEL_LOG" >/tmp/hopon-cloudflared.out 2>&1 &
+nohup cloudflared tunnel --protocol http2 --url http://localhost:3001 --logfile "$TUNNEL_LOG" >/tmp/hopon-cloudflared.out 2>&1 &
 TUNNEL_PID=$!
 
 TUNNEL_URL=""
 for _ in {1..60}; do
-  TUNNEL_URL="$(grep -Eo 'https://[-a-zA-Z0-9]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -n 1 || true)"
+  TUNNEL_URL="$(grep -Eo 'https://[-a-zA-Z0-9]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -n 1 || true)"
   if [[ -n "$TUNNEL_URL" ]]; then
     break
   fi

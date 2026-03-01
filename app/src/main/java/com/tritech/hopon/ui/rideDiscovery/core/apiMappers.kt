@@ -16,6 +16,18 @@ private val iso8601Formats = listOf(
 )
 
 /**
+ * Normalises backend post status values.
+ *
+ * The API historically used "in_progress" while some environments now return
+ * "ongoing" for the same lifecycle state.
+ */
+fun normalisePostStatus(raw: String?): String? = when (raw) {
+    "ongoing" -> "in_progress"
+    null -> null
+    else -> raw
+}
+
+/**
  * Parses an ISO 8601 departure_time string and returns a
  * `RideDateTimeFormatter`-compatible label such as "Feb 26, 2026, 15:30".
  * Returns the raw string unchanged on parse failure so the UI always has
@@ -89,7 +101,9 @@ fun ApiCarpoolPost.toRideListItem(
         0f
     }
 
-    val lifecycleStatus = when (status) {
+    val normalisedPostStatus = normalisePostStatus(status)
+
+    val lifecycleStatus = when (normalisedPostStatus) {
         "in_progress" -> RideLifecycleStatus.ONGOING
         "completed"   -> RideLifecycleStatus.COMPLETED
         else          -> RideLifecycleStatus.UPCOMING
@@ -118,7 +132,7 @@ fun ApiCarpoolPost.toRideListItem(
         peopleCount          = total_seats - available_seats,
         maxPeopleCount       = total_seats,
         participationRole    = participationRole,
-        isCompleted          = status == "completed",
+        isCompleted          = normalisedPostStatus == "completed",
         rideTimeMinutes      = null,     // not provided by API; set after ride ends
         lifecycleStatus      = lifecycleStatus,
         postId               = id,

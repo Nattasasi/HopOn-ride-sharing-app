@@ -102,6 +102,7 @@ import com.tritech.hopon.ui.rideDiscovery.core.TrackingService
 import com.tritech.hopon.ui.rideDiscovery.core.ApiUpdateTrackingRequest
 import com.tritech.hopon.ui.rideDiscovery.core.isActiveBooking
 import com.tritech.hopon.ui.rideDiscovery.core.normaliseBookingStatus
+import com.tritech.hopon.ui.rideDiscovery.core.normalisePostStatus
 import com.tritech.hopon.ui.rideDiscovery.core.toMockChatMessages
 import com.tritech.hopon.ui.rideDiscovery.core.toRideListItem
 import kotlinx.coroutines.Job
@@ -133,7 +134,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         private const val EXTRA_OPEN_RIDE_IN_PROCESS = "extra_open_ride_in_process"
         private const val RIDE_ONGOING_CHANNEL_ID = "ride_ongoing_channel"
         private const val RIDE_ONGOING_NOTIFICATION_ID = 9001
-        private const val ARRIVAL_RADIUS_METERS = 100f
+        private const val ARRIVAL_RADIUS_METERS = 10_000f
     }
 
     private lateinit var binding: ActivityMapsBinding
@@ -1022,6 +1023,12 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
             isProfileVisible -> MapsBottomNavItem.PROFILE
             else -> MapsBottomNavItem.HOME
         }
+
+        if (isRideInProcessVisible) {
+            lifecycleScope.launch {
+                maybeShowPaymentForExternallyCompletedRide()
+            }
+        }
     }
 
     private fun showHistoryContent() {
@@ -1146,7 +1153,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun showRideDetailContent() {
         stopInProcessTrackingSync()
-        animateMainContentTransition()
+        animateSlideTransition()
         isHistoryVisible = false
         isRideDetailVisible = true
         isProfileVisible = false
@@ -1175,7 +1182,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun showRideInProcessContent() {
-        animateMainContentTransition()
+        animateSlideTransition()
         isHistoryVisible = false
         isRideDetailVisible = false
         isProfileVisible = false
@@ -1277,7 +1284,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun showCreateRideContent() {
         stopInProcessTrackingSync()
-        animateMainContentTransition()
+        animateSlideTransition()
         isHistoryVisible = false
         isRideDetailVisible = false
         isProfileVisible = false
@@ -1309,15 +1316,20 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun animateMainContentTransition() {
-        val transition = AutoTransition().apply {
-            duration = 180
+        // Instant swap — no animation (used for tab switches).
+    }
+
+    /** Slide-in transition for within-tab navigation (e.g. History → RideDetail). */
+    private fun animateSlideTransition() {
+        val slide = android.transition.Slide(android.view.Gravity.END).apply {
+            duration = 220
         }
-        TransitionManager.beginDelayedTransition(binding.root as ConstraintLayout, transition)
+        TransitionManager.beginDelayedTransition(binding.root as ConstraintLayout, slide)
     }
 
     private fun showGroupChatContent() {
         stopInProcessTrackingSync()
-        animateMainContentTransition()
+        animateSlideTransition()
         isHistoryVisible = false
         isRideDetailVisible = false
         isProfileVisible = false
@@ -1378,7 +1390,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
     private fun showRidePaymentContent(isHost: Boolean) {
         stopInProcessTrackingSync()
-        animateMainContentTransition()
+        animateSlideTransition()
         selectedBottomNavItem = MapsBottomNavItem.RIDES
         isPendingPaymentHost = isHost
         isHistoryVisible = false
@@ -1411,6 +1423,16 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
     }
 
     private fun completeRideAfterPayment() {
+        val ride = activeInProcessRide
+        if (isPendingPaymentHost && ride?.postId?.isNotBlank() == true) {
+            lifecycleScope.launch {
+                runCatching {
+                    ApiClient.create<PostsService>(this@RootHostActivity)
+                        .updateStatus(ride.postId, ApiUpdateStatusRequest("completed"))
+                }
+            }
+        }
+
         stopInProcessTrackingSync()
         chatSocketManager?.disconnect()
         currentChatPostId = null
@@ -1532,7 +1554,7 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
         val joinedOngoing = bookings
             .filter { it.status == "confirmed" }
             .mapNotNull { booking ->
-                booking.post_id?.takeIf { it.status == "in_progress" }
+                booking.post_id?.takeIf { normalisePostStatus(it.status) == "in_progress" }
                     ?.toRideListItem(currentUserLatLng = currentLatLng, currentUserId = currentUserId)
                     ?.copy(
                         bookingId = booking.id,
@@ -2342,6 +2364,10 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
         trackingPollJob = lifecycleScope.launch {
             while (isActive && isRideInProcessVisible) {
+                if (maybeShowPaymentForExternallyCompletedRide()) {
+                    break
+                }
+
                 val tracking = runCatching {
                     trackingService.getTracking(postId)
                 }.getOrNull()
@@ -2360,6 +2386,32 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 delay(3000L)
             }
         }
+    }
+
+    /**
+     * Checks the active ride status from API and opens payment when the ride
+     * has been completed outside the app.
+     *
+     * @return true when payment was shown and in-process polling should stop.
+     */
+    private suspend fun maybeShowPaymentForExternallyCompletedRide(): Boolean {
+        if (!isRideInProcessVisible || isRidePaymentVisible) return false
+
+        val ride = activeInProcessRide ?: return false
+        val postId = ride.postId.ifBlank { return false }
+
+        val apiPost = runCatching {
+            ApiClient.create<PostsService>(this@RootHostActivity).getPost(postId)
+        }.getOrNull() ?: return false
+
+        val normalisedStatus = normalisePostStatus(apiPost.status)
+        if (normalisedStatus != "completed") return false
+
+        hasLocallyDetectedTripEnd = true
+        val currentUserId = SessionManager.getCurrentUserId(this@RootHostActivity).orEmpty()
+        val isHost = ride.participationRole == RideParticipationRole.HOSTED || ride.hostUserId == currentUserId
+        showRidePaymentContent(isHost = isHost)
+        return true
     }
 
     private fun stopInProcessTrackingSync() {
@@ -2456,16 +2508,6 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
 
         val isHost = ride.participationRole == RideParticipationRole.HOSTED
                 || ride.hostUserId == currentUserId
-
-        // Mark the post as completed via API (fire-and-forget).
-        if (isHost && ride.postId.isNotBlank()) {
-            lifecycleScope.launch {
-                runCatching {
-                    ApiClient.create<PostsService>(this@RootHostActivity)
-                        .updateStatus(ride.postId, ApiUpdateStatusRequest("completed"))
-                }
-            }
-        }
 
         showRidePaymentContent(isHost = isHost)
     }

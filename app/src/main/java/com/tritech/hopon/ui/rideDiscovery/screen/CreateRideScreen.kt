@@ -63,7 +63,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
@@ -136,6 +139,7 @@ fun createRideScreen(
     val density = LocalDensity.current
     val locationBoxWidthDp = with(density) { locationBoxWidthPx.toDp() }
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     var wasImeVisible by remember { mutableStateOf(false) }
     val vehicleOptions = listOf(defaultVehicleInfo)
@@ -162,6 +166,13 @@ fun createRideScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    onDismissLocationOverlay()
+                })
+            }
     ) {
         Column(
             modifier = Modifier
