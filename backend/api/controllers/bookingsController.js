@@ -3,17 +3,73 @@ const Booking = require('../models/Booking');
 const CarpoolPost = require('../models/CarpoolPost');
 const { validationResult } = require('express-validator');
 
+const CANCEL_CUTOFF_MINUTES = 30;
+const PICKUP_STATUS_NOT_ARRIVED = 'not_arrived';
+const PICKUP_STATUS_ARRIVED = 'arrived';
+const PICKUP_STATUS_BOARDED = 'boarded';
+const PICKUP_STATUS_LEFT_BEHIND = 'left_behind';
+const CONFIRMED_LIKE_BOOKING_STATUSES = ['confirmed', 'accepted'];
+
+const hideVehicleIdentity = (postLike) => {
+  if (!postLike) return postLike;
+  // Plate is intentionally visible in ride details for all users.
+  return postLike;
+};
+
+const hasPassedCancellationCutoff = (departureTime) => {
+  if (!departureTime) return false;
+  const departureEpoch = new Date(departureTime).getTime();
+  if (Number.isNaN(departureEpoch)) return false;
+  const cutoffEpoch = departureEpoch - (CANCEL_CUTOFF_MINUTES * 60 * 1000);
+  return Date.now() > cutoffEpoch;
+};
+
+const hasRideDeparted = (departureTime) => {
+  if (!departureTime) return false;
+  const departureEpoch = new Date(departureTime).getTime();
+  if (Number.isNaN(departureEpoch)) return false;
+  // Allow booking up to meetup time inclusive; block only after departure.
+  return Date.now() > departureEpoch;
+};
+
+const emitRideEvent = (req, postMongoId, eventName, payload) => {
+  const io = req.app.get('io');
+  if (!io || !postMongoId) return;
+  io.to(`post_${postMongoId}`).emit(eventName, payload);
+};
+
+const emitUserEvent = (req, userId, eventName, payload) => {
+  const io = req.app.get('io');
+  if (!io || !userId) return;
+  io.to(`user_${userId}`).emit(eventName, payload);
+};
+
 // @desc    Request to join a ride
 // @route   POST /api/v1/bookings
 // @access  Private
 const requestBooking = async (req, res) => {
   const { post_id, seats_booked } = req.body;
   const seats = seats_booked || 1;
+  const ACTIVE_BOOKING_STATUSES = ['pending', 'accepted', 'confirmed'];
 
   try {
     // Search by the custom post_id string (UUID) instead of MongoDB _id
     const post = await CarpoolPost.findOne({ post_id: post_id });
     if (!post) return res.status(404).json({ message: 'Ride post not found' });
+
+    if (post.status !== 'active') {
+      return res.status(409).json({
+        code: 'RIDE_NOT_JOINABLE',
+        message: 'This ride is no longer joinable.'
+      });
+    }
+
+    if (hasRideDeparted(post.departure_time)) {
+      return res.status(409).json({
+        code: 'RIDE_NOT_JOINABLE',
+        message: 'This ride has already departed and can no longer be joined.'
+      });
+    }
 
     if (post.driver_id.toString() === req.user.id) {
       return res.status(400).json({ message: 'You cannot book your own ride' });
@@ -23,15 +79,58 @@ const requestBooking = async (req, res) => {
       return res.status(400).json({ message: 'Not enough seats available' });
     }
 
-    // Check if user already has a pending or confirmed booking for this post
+    // Block users from holding more than one active booking across rides that are still active/in-progress.
+    // Completed/cancelled rides should not block new bookings even if legacy booking.status stayed "confirmed".
+    const activeStatusBookings = await Booking.find({
+      passenger_id: req.user.id,
+      status: { $in: ACTIVE_BOOKING_STATUSES }
+    })
+      .sort({ booked_at: -1 })
+      .lean();
+
+    if (activeStatusBookings.length > 0) {
+      const candidatePostUuids = [...new Set(
+        activeStatusBookings.map((booking) => booking.post_id).filter(Boolean)
+      )];
+      const stillActivePosts = await CarpoolPost.find({
+        post_id: { $in: candidatePostUuids },
+        status: { $in: ['active', 'in_progress'] }
+      })
+        .select('post_id')
+        .lean();
+      const activePostUuids = new Set(stillActivePosts.map((activePost) => activePost.post_id));
+      const existingActiveBooking = activeStatusBookings.find((booking) =>
+        activePostUuids.has(booking.post_id)
+      );
+
+      if (existingActiveBooking) {
+        const hasActiveBookingForThisPost = existingActiveBooking.post_id === post_id;
+        if (hasActiveBookingForThisPost) {
+          return res.status(400).json({
+            code: 'DUPLICATE_BOOKING_FOR_POST',
+            message: 'You already have an active booking for this ride'
+          });
+        }
+
+        return res.status(409).json({
+          code: 'ACTIVE_BOOKING_CONFLICT',
+          message: 'You already have an active booking. Cancel your current pending/confirmed ride before joining another.'
+        });
+      }
+    }
+
+    // Legacy same-post check (kept as safety net for race conditions)
     const existingBooking = await Booking.findOne({ 
       post_id, 
       passenger_id: req.user.id,
-      status: { $in: ['pending', 'accepted', 'confirmed'] }
+      status: { $in: ACTIVE_BOOKING_STATUSES }
     });
 
     if (existingBooking) {
-      return res.status(400).json({ message: 'You already have an active booking for this ride' });
+      return res.status(400).json({
+        code: 'DUPLICATE_BOOKING_FOR_POST',
+        message: 'You already have an active booking for this ride'
+      });
     }
 
     const booking = new Booking({
@@ -39,12 +138,22 @@ const requestBooking = async (req, res) => {
       post_id,
       passenger_id: req.user.id,
       seats_booked: seats,
-      status: 'pending'
+      status: 'pending',
+      pickup_status: PICKUP_STATUS_NOT_ARRIVED
     });
 
     await booking.save();
-    
-    // TODO: Notify driver via socket/push
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${post.driver_id.toString()}`).emit('booking_requested', {
+        booking_id: booking._id.toString(),
+        post_id: post._id.toString(),
+        post_uuid: post.post_id,
+        passenger_id: req.user.id,
+        seats_booked: booking.seats_booked
+      });
+    }
     
     res.status(201).json(booking);
   } catch (error) {
@@ -84,6 +193,127 @@ const respondToBooking = async (req, res) => {
     }
 
     await booking.save();
+    const statusPayload = {
+      booking_id: booking._id.toString(),
+      post_id: post._id.toString(),
+      post_uuid: post.post_id,
+      passenger_id: booking.passenger_id.toString(),
+      status: booking.status
+    };
+    emitRideEvent(req, post._id.toString(), 'booking_status_changed', statusPayload);
+    emitUserEvent(req, booking.passenger_id.toString(), 'booking_status_changed', statusPayload);
+    emitUserEvent(req, post.driver_id.toString(), 'booking_status_changed', statusPayload);
+    res.json(booking);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Passenger marks self as arrived/in car for a booking
+// @route   PATCH /api/v1/bookings/:id/arrive
+// @access  Private (Passenger)
+const markBookingArrived = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    const post = await CarpoolPost.findOne({ post_id: booking.post_id });
+    if (!post) return res.status(404).json({ message: 'Ride post not found' });
+
+    if (booking.passenger_id.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Only the passenger can mark arrival' });
+    }
+
+    if (!CONFIRMED_LIKE_BOOKING_STATUSES.includes(booking.status)) {
+      return res.status(400).json({ message: 'Only confirmed bookings can check in' });
+    }
+
+    if (post.status !== 'active') {
+      return res.status(400).json({ message: 'Ride is no longer accepting pickup check-ins' });
+    }
+
+    if (booking.pickup_status === PICKUP_STATUS_LEFT_BEHIND) {
+      return res.status(400).json({ message: 'You were marked left behind for this ride' });
+    }
+
+    if (booking.pickup_status === PICKUP_STATUS_BOARDED) {
+      return res.status(400).json({ message: 'You are already confirmed boarded' });
+    }
+
+    booking.pickup_status = PICKUP_STATUS_ARRIVED;
+    booking.arrived_at = booking.arrived_at || new Date();
+    await booking.save();
+
+    emitRideEvent(req, post._id.toString(), 'passenger_arrived', {
+      booking_id: booking._id.toString(),
+      post_id: post._id.toString(),
+      post_uuid: post.post_id,
+      passenger_id: booking.passenger_id.toString(),
+      arrived_at: booking.arrived_at
+    });
+    emitUserEvent(req, post.driver_id.toString(), 'passenger_arrived', {
+      booking_id: booking._id.toString(),
+      post_id: post._id.toString(),
+      post_uuid: post.post_id,
+      passenger_id: booking.passenger_id.toString(),
+      arrived_at: booking.arrived_at
+    });
+
+    res.json(booking);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Driver confirms passenger boarded
+// @route   PATCH /api/v1/bookings/:id/confirm-boarded
+// @access  Private (Ride host)
+const confirmPassengerBoarded = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    const post = await CarpoolPost.findOne({ post_id: booking.post_id });
+    if (!post) return res.status(404).json({ message: 'Ride post not found' });
+
+    if (post.driver_id.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only the ride host can confirm boarded status' });
+    }
+
+    if (!CONFIRMED_LIKE_BOOKING_STATUSES.includes(booking.status)) {
+      return res.status(400).json({ message: 'Only confirmed bookings can be marked boarded' });
+    }
+
+    if (post.status !== 'active') {
+      return res.status(400).json({ message: 'Ride is no longer in boarding phase' });
+    }
+
+    if (booking.pickup_status === PICKUP_STATUS_LEFT_BEHIND) {
+      return res.status(400).json({ message: 'Passenger is already marked left behind' });
+    }
+
+    booking.pickup_status = PICKUP_STATUS_BOARDED;
+    booking.confirmed_by_driver_at = new Date();
+    if (!booking.arrived_at) {
+      booking.arrived_at = booking.confirmed_by_driver_at;
+    }
+    await booking.save();
+
+    emitRideEvent(req, post._id.toString(), 'passenger_boarded', {
+      booking_id: booking._id.toString(),
+      post_id: post._id.toString(),
+      post_uuid: post.post_id,
+      passenger_id: booking.passenger_id.toString(),
+      confirmed_by_driver_at: booking.confirmed_by_driver_at
+    });
+    emitUserEvent(req, booking.passenger_id.toString(), 'passenger_boarded', {
+      booking_id: booking._id.toString(),
+      post_id: post._id.toString(),
+      post_uuid: post.post_id,
+      passenger_id: booking.passenger_id.toString(),
+      confirmed_by_driver_at: booking.confirmed_by_driver_at
+    });
+
     res.json(booking);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -119,6 +349,13 @@ const cancelBooking = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to cancel this booking' });
     }
 
+    if (hasPassedCancellationCutoff(post.departure_time)) {
+      return res.status(409).json({
+        code: 'CANCEL_CUTOFF_EXCEEDED',
+        message: 'Cancellation is not allowed within 30 minutes of departure.'
+      });
+    }
+
     // 4. Check if already cancelled
     if (booking.status === 'cancelled') {
       return res.status(400).json({ message: 'Booking is already cancelled' });
@@ -127,6 +364,17 @@ const cancelBooking = async (req, res) => {
     const oldStatus = booking.status;
     booking.status = 'cancelled';
     await booking.save();
+    const cancelledPayload = {
+      booking_id: booking._id.toString(),
+      post_id: post._id.toString(),
+      post_uuid: post.post_id,
+      passenger_id: booking.passenger_id.toString(),
+      cancelled_by: req.user.id,
+      status: booking.status
+    };
+    emitRideEvent(req, post._id.toString(), 'booking_cancelled', cancelledPayload);
+    emitUserEvent(req, booking.passenger_id.toString(), 'booking_cancelled', cancelledPayload);
+    emitUserEvent(req, post.driver_id.toString(), 'booking_cancelled', cancelledPayload);
 
     // 5. If the booking was confirmed/accepted, return the seats to the post
     if (oldStatus === 'confirmed' || oldStatus === 'accepted') {
@@ -136,12 +384,21 @@ const cancelBooking = async (req, res) => {
       });
     }
 
-    res.json({ 
-      message: 'Booking cancelled successfully', 
+    const bookingPost = (() => {
+      const postObject = post.toObject ? post.toObject() : { ...post };
+      const wasConfirmedPassenger = oldStatus === 'confirmed' || oldStatus === 'accepted';
+      if (!isDriver && !wasConfirmedPassenger) {
+        hideVehicleIdentity(postObject);
+      }
+      return postObject;
+    })();
+
+    res.json({
+      message: 'Booking cancelled successfully',
       booking: {
         ...booking._doc,
-        post_id: post // Return the full post object to match expected frontend format
-      } 
+        post_id: bookingPost // Return the full post object to match expected frontend format
+      }
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -162,8 +419,12 @@ const getUserBookings = async (req, res) => {
     const populatedBookings = await Promise.all(
       bookings.map(async (booking) => {
         const post = await CarpoolPost.findOne({ post_id: booking.post_id })
-          .populate('driver_id', 'first_name last_name average_rating');
-        return { ...booking, post_id: post }; // Replace the ID string with the post object
+          .populate('driver_id', 'first_name last_name average_rating is_verified verification_status');
+        const postObject = post ? post.toObject() : null;
+        if (postObject && !CONFIRMED_LIKE_BOOKING_STATUSES.includes(booking.status)) {
+          hideVehicleIdentity(postObject);
+        }
+        return { ...booking, post_id: postObject }; // Replace the ID string with the post object
       })
     );
 
@@ -181,9 +442,9 @@ const getRideBookings = async (req, res) => {
    const post = await CarpoolPost.findOne({ post_id: req.params.id });
     if (!post) return res.status(404).json({ message: 'Ride post not found' });
 
-// if (post.driver_id.toString() !== req.user.id) {
-//       return res.status(403).json({ message: 'Access denied' });
-//     }
+    if (post.driver_id.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only the ride host can view booking requests' });
+    }
    const bookings = await Booking.find({ post_id: post.post_id })
       .populate('passenger_id', 'first_name last_name email phone_number')
       .sort({ booked_at: 1 });
@@ -197,6 +458,8 @@ const getRideBookings = async (req, res) => {
 module.exports = { 
   requestBooking, 
   respondToBooking, 
+  markBookingArrived,
+  confirmPassengerBoarded,
   cancelBooking, 
   getUserBookings, 
   getRideBookings 

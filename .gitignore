@@ -1,3 +1,22 @@
 local.properties
 .github/copilot-instructions.md
 .env
+
+# Environment and secrets
+.env.*
+!.env.example
+backend/web/.env.local
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+google-services.json
+GoogleService-Info.plist
+
+# Local docs / working notes (keep root README.md as primary doc)
+*.md
+!README.md
+
+# Local/dev scripts with sensitive test data
+backend/api/userSeeder.js

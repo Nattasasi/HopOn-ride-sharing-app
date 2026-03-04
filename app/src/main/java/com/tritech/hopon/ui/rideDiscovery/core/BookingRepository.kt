@@ -45,6 +45,16 @@ interface BookingRepository {
     suspend fun respondToBooking(bookingId: String, accept: Boolean): Result<ApiBooking>
 
     /**
+     * Passenger marks their confirmed booking as arrived/in the car.
+     */
+    suspend fun markArrived(bookingId: String): Result<ApiBooking>
+
+    /**
+     * Ride host confirms a passenger has boarded.
+     */
+    suspend fun confirmBoarded(bookingId: String): Result<ApiBooking>
+
+    /**
      * Cancel an existing booking (passenger or driver).
      *
      * @param bookingId  MongoDB `_id` of the booking.

@@ -36,6 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
@@ -45,6 +47,7 @@ import com.google.android.gms.maps.model.LatLngBounds
 import com.tritech.hopon.R
 import com.tritech.hopon.ui.components.rideInProcessCard
 import com.tritech.hopon.ui.components.hopOnButton
+import com.tritech.hopon.ui.rideDiscovery.core.ApiBooking
 import com.tritech.hopon.utils.MapUtils
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
@@ -70,26 +73,46 @@ fun rideInProcessScreen(
     peopleCount: Int?,
     maxPeopleCount: Int?,
     hostName: String?,
+    vehiclePlate: String? = null,
     currentLocationLatLng: LatLng?,
     meetupLatLng: LatLng?,
     destinationLatLng: LatLng?,
     pickupRoutePoints: List<LatLng>,
     rideRoutePoints: List<LatLng>,
+    showReportDriverAction: Boolean = false,
+    onReportDriverClick: () -> Unit = {},
     onGroupChatClick: () -> Unit = {},
+    isDriverView: Boolean = false,
+    driverPassengerBookings: List<ApiBooking> = emptyList(),
+    currentUserBooking: ApiBooking? = null,
+    waitTimerLabel: String? = null,
+    showStartRideAction: Boolean = false,
+    isStartRideEnabled: Boolean = false,
+    showCompleteRideAction: Boolean = false,
+    isActionLoading: Boolean = false,
+    onPassengerArriveClick: () -> Unit = {},
+    onDriverConfirmBoardedClick: (bookingId: String) -> Unit = {},
+    onDriverStartRideClick: () -> Unit = {},
+    onDriverCompleteRideClick: () -> Unit = {},
+    cancelWindowInfo: String? = null,
+    isCancelRideEnabled: Boolean = true,
     onCancelRideClick: () -> Unit = {},
     onBackClick: () -> Unit
 ) {
     val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
     val mapMinHeight = screenHeight * RideMapMinHeightRatio
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
             .padding(start = 16.dp, top = 16.dp, end = 16.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Top
         ) {
             Row(
@@ -156,6 +179,16 @@ fun rideInProcessScreen(
                         .padding(top = 16.dp)
                         .fillMaxWidth()
                 )
+                if (!vehiclePlate.isNullOrBlank()) {
+                    Text(
+                        text = stringResource(id = R.string.vehicle_plate_format, vehiclePlate),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.DarkGray,
+                        modifier = Modifier
+                            .padding(top = 10.dp)
+                            .fillMaxWidth()
+                    )
+                }
             } else {
                 Text(
                     text = stringResource(id = R.string.ride_in_process_placeholder),
@@ -164,12 +197,76 @@ fun rideInProcessScreen(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
+
+            waitTimerLabel?.takeIf { it.isNotBlank() }?.let { info ->
+                Text(
+                    text = info,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.DarkGray,
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .fillMaxWidth()
+                )
+            }
+
+            if (isDriverView && driverPassengerBookings.isNotEmpty()) {
+                Text(
+                    text = stringResource(id = R.string.ride_in_process_passenger_states_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.Black,
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .fillMaxWidth()
+                )
+                driverPassengerBookings.forEach { booking ->
+                    val passengerName = booking.passenger_id?.fullName
+                        ?.takeIf { it.isNotBlank() }
+                        ?: stringResource(id = R.string.booking_unknown_passenger)
+                    val pickupLabel = when (booking.pickup_status) {
+                        "arrived" -> stringResource(id = R.string.pickup_status_arrived)
+                        "boarded" -> stringResource(id = R.string.pickup_status_boarded)
+                        "left_behind" -> stringResource(id = R.string.pickup_status_left_behind)
+                        else -> stringResource(id = R.string.pickup_status_not_arrived)
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = passengerName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Color.Black
+                            )
+                            Text(
+                                text = pickupLabel,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.DarkGray
+                            )
+                        }
+                        if (booking.pickup_status == "arrived") {
+                            hopOnButton(
+                                text = stringResource(id = R.string.pickup_confirm_boarded_action),
+                                onClick = { onDriverConfirmBoardedClick(booking.id) },
+                                enabled = !isActionLoading,
+                                modifier = Modifier
+                                    .padding(start = 8.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         Column(
             modifier = Modifier
-                .align(androidx.compose.ui.Alignment.BottomCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .padding(top = 12.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             hopOnButton(
@@ -177,11 +274,60 @@ fun rideInProcessScreen(
                 onClick = onGroupChatClick,
                 modifier = Modifier.fillMaxWidth()
             )
+            if (showReportDriverAction) {
+                hopOnButton(
+                    text = stringResource(id = R.string.report_driver),
+                    onClick = onReportDriverClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = colorResource(id = R.color.colorAccent)
+                )
+            }
+            if (!isDriverView) {
+                val pickupStatus = currentUserBooking?.pickup_status
+                val arriveLabel = when (pickupStatus) {
+                    "arrived" -> stringResource(id = R.string.pickup_status_waiting_driver)
+                    "boarded" -> stringResource(id = R.string.pickup_status_boarded)
+                    "left_behind" -> stringResource(id = R.string.pickup_status_left_behind)
+                    else -> stringResource(id = R.string.pickup_arrive_action)
+                }
+                val canArrive = pickupStatus == null || pickupStatus == "not_arrived"
+                hopOnButton(
+                    text = arriveLabel,
+                    onClick = onPassengerArriveClick,
+                    enabled = canArrive && !isActionLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (isDriverView && showStartRideAction) {
+                hopOnButton(
+                    text = stringResource(id = R.string.ride_start_action),
+                    onClick = onDriverStartRideClick,
+                    enabled = isStartRideEnabled && !isActionLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (isDriverView && showCompleteRideAction) {
+                hopOnButton(
+                    text = stringResource(id = R.string.ride_complete_action),
+                    onClick = onDriverCompleteRideClick,
+                    enabled = !isActionLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            cancelWindowInfo?.takeIf { it.isNotBlank() }?.let { info ->
+                Text(
+                    text = info,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isCancelRideEnabled) Color.DarkGray else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             hopOnButton(
                 text = stringResource(id = R.string.cancel_ride),
                 onClick = onCancelRideClick,
                 modifier = Modifier.fillMaxWidth(),
-                containerColor = colorResource(id = R.color.cancelRideRed)
+                containerColor = colorResource(id = R.color.cancelRideRed),
+                enabled = isCancelRideEnabled
             )
         }
     }

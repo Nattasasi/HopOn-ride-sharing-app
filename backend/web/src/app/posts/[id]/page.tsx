@@ -6,13 +6,13 @@ import { io } from 'socket.io-client';
 import GoogleMapReact from 'google-map-react';
 import { Button, Input } from '@/components/ui';
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import axios, { SOCKET_BASE_URL } from '@/lib/axios';
 
-const socket = io(process.env.NEXT_PUBLIC_API_URL);
+const socket = io(SOCKET_BASE_URL);
 
 export default function PostDetail() {
   const { id } = useParams();
-  const [messages, setMessages] = useState([]);
+  const [liveMessages, setLiveMessages] = useState([]);
   const [tracking, setTracking] = useState(null);
 
   const { data: post } = useQuery({
@@ -26,10 +26,9 @@ export default function PostDetail() {
   });
 
   useEffect(() => {
-    setMessages(initialMessages || []);
     socket.emit('join_post', { token: localStorage.getItem('token'), post_id: id });
 
-    socket.on('new_message', msg => setMessages(prev => [...prev, msg]));
+    socket.on('new_message', msg => setLiveMessages(prev => [...prev, msg]));
     socket.on('location_update', track => setTracking(track));
 
     return () => {
@@ -56,7 +55,7 @@ export default function PostDetail() {
       </GoogleMapReact>
       <Button onClick={() => {/* join */}}>Join</Button>
       <div>Chat:
-        {messages.map(m => <div key={m.message_id}>{m.body}</div>)}
+        {[...(initialMessages || []), ...liveMessages].map(m => <div key={m.message_id}>{m.body}</div>)}
         <Input onKeyDown={e => e.key === 'Enter' && sendMessage(e.target.value)} />
       </div>
       <Button onClick={emergency}>Emergency</Button>

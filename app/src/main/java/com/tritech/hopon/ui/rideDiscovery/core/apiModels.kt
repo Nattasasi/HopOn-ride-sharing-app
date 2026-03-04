@@ -43,12 +43,42 @@ data class ApiUser(
     val first_name: String,
     val last_name: String,
     val email: String = "",
+    val profile_photo: String? = null,
     val phone_number: String? = null,
     val role: String? = null,
+    val is_verified: Boolean? = null,
+    val verification_status: String? = null,
+    val verification_type: String? = null,
+    val verification_doc_url: String? = null,
+    val verification_notes: String? = null,
+    val verified_at: String? = null,
     @SerializedName("average_rating") val rating: Double? = null
 ) {
     val fullName: String get() = "$first_name $last_name".trim()
 }
+
+data class ApiUpdateUserRequest(
+    val first_name: String? = null,
+    val last_name: String? = null,
+    val email: String? = null,
+    val profile_photo: String? = null,
+    val password: String? = null,
+    val current_password: String
+)
+
+data class ApiSubmitVerificationRequest(
+    val verification_type: String,
+    val verification_doc_url: String,
+    val verification_notes: String? = null
+)
+
+data class ApiVerificationStatus(
+    val verification_status: String? = null,
+    val verification_type: String? = null,
+    val verification_doc_url: String? = null,
+    val verification_notes: String? = null,
+    val verified_at: String? = null
+)
 
 // ─── Carpool Post (Ride) ──────────────────────────────────────────────────────
 
@@ -73,6 +103,9 @@ data class ApiCarpoolPost(
     val status: String = "active",
     // Fields added in Phase 10 schema alignment (optional until backend adds them)
     val vehicle_info: String? = null,
+    val vehicle_plate: String? = null,
+    val vehicle_brand: String? = null,
+    val vehicle_color: String? = null,
     val contact_info: String? = null,
     val additional_notes: String? = null,
     val wait_time_minutes: Int? = null
@@ -124,6 +157,9 @@ data class ApiCreatePostRequest(
     val total_seats: Int,
     val price_per_seat: Double = 0.0,
     val vehicle_info: String? = null,
+    val vehicle_plate: String? = null,
+    val vehicle_brand: String? = null,
+    val vehicle_color: String? = null,
     val contact_info: String? = null,
     val additional_notes: String? = null,
     val wait_time_minutes: Int? = null
@@ -142,7 +178,11 @@ data class ApiBooking(
     @SerializedName("_id")   val id: String,
     @SerializedName("post_id") private val rawPostId: JsonElement? = null,
     @SerializedName("passenger_id") private val rawPassengerId: JsonElement? = null,
-    val status: String = "pending",
+    val status: String? = "pending",
+    val pickup_status: String? = "not_arrived",
+    val arrived_at: String? = null,
+    val confirmed_by_driver_at: String? = null,
+    val left_behind_at: String? = null,
     val created_at: String? = null
 ) {
     val post_id: ApiCarpoolPost?
@@ -217,6 +257,9 @@ data class ApiBooking(
                 price_per_seat = obj.get("price_per_seat")?.takeIf { !it.isJsonNull }?.asDouble ?: 0.0,
                 status = obj.get("status")?.takeIf { !it.isJsonNull }?.asString ?: "active",
                 vehicle_info = obj.get("vehicle_info")?.takeIf { !it.isJsonNull }?.asString,
+                vehicle_plate = obj.get("vehicle_plate")?.takeIf { !it.isJsonNull }?.asString,
+                vehicle_brand = obj.get("vehicle_brand")?.takeIf { !it.isJsonNull }?.asString,
+                vehicle_color = obj.get("vehicle_color")?.takeIf { !it.isJsonNull }?.asString,
                 contact_info = obj.get("contact_info")?.takeIf { !it.isJsonNull }?.asString,
                 additional_notes = obj.get("additional_notes")?.takeIf { !it.isJsonNull }?.asString,
                 wait_time_minutes = obj.get("wait_time_minutes")?.takeIf { !it.isJsonNull }?.asInt
@@ -340,4 +383,30 @@ data class ApiCreateFeedbackRequest(
     val reviewee_id: String,
     val rating: Int,
     val comment: String? = null
+)
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+
+data class ApiReport(
+    @SerializedName("_id") val id: String? = null,
+    val report_id: String? = null,
+    val post_id: String? = null,
+    val reporter_id: String? = null,
+    val reported_user_id: String? = null,
+    val booking_id: String? = null,
+    val stage: String,
+    val category: String,
+    val description: String,
+    val status: String = "pending",
+    val created_at: String? = null,
+    val updated_at: String? = null
+)
+
+data class ApiCreateReportRequest(
+    val post_id: String,
+    val reported_user_id: String,
+    val stage: String,
+    val category: String,
+    val description: String,
+    val booking_id: String? = null
 )

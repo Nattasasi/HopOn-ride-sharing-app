@@ -93,13 +93,30 @@ fun mapHomePrimaryActionButton(
     /** Number of pending booking requests (for driver badge). */
     pendingRequestCount: Int = 0,
     /** True when the selected ride is the current user's own (driver view). */
-    isOwnRide: Boolean = false
+    isOwnRide: Boolean = false,
+    /** False when backend has reported active hosted-ride conflict for create action. */
+    canCreateRide: Boolean = true,
+    /** Optional custom disabled label for create-ride action (e.g. verification required). */
+    createRideBlockedLabel: String? = null,
+    /** False when backend has reported active-booking conflict for join action. */
+    canJoinRide: Boolean = true,
+    /** Optional custom disabled label for join-ride action. */
+    joinRideBlockedLabel: String? = null,
+    /** False when booking cancel window is already expired. */
+    canCancelBooking: Boolean = true
 ) {
     val isJoinRideMode = selectedRide != null
 
     // Determine label and action based on booking state
     val (label, action, enabled) = when {
-        !isJoinRideMode -> Triple(stringResource(R.string.create_ride), onCreateRideClick, true)
+        !isJoinRideMode -> {
+            val createLabel = if (canCreateRide) {
+                stringResource(R.string.create_ride)
+            } else {
+                createRideBlockedLabel ?: stringResource(R.string.create_ride_blocked_active_conflict)
+            }
+            Triple(createLabel, onCreateRideClick, canCreateRide)
+        }
 
         isBookingLoading -> Triple("…", {}, false)
 
@@ -112,14 +129,32 @@ fun mapHomePrimaryActionButton(
             Triple(requestLabel, onViewRequestsClick, true)
         }
 
-        bookingStatus == "pending" ->
-            Triple(stringResource(R.string.booking_status_pending), onCancelBookingClick, true)
+        bookingStatus == "pending" -> {
+            val pendingLabel = if (canCancelBooking) {
+                stringResource(R.string.booking_status_pending)
+            } else {
+                stringResource(R.string.booking_cancel_blocked_cutoff)
+            }
+            Triple(pendingLabel, onCancelBookingClick, canCancelBooking)
+        }
 
-        bookingStatus == "confirmed" ->
-            Triple(stringResource(R.string.booking_status_confirmed), onCancelBookingClick, true)
+        bookingStatus == "confirmed" -> {
+            val confirmedLabel = if (canCancelBooking) {
+                stringResource(R.string.booking_status_confirmed)
+            } else {
+                stringResource(R.string.booking_cancel_blocked_cutoff)
+            }
+            Triple(confirmedLabel, onCancelBookingClick, canCancelBooking)
+        }
 
-        else ->
-            Triple(stringResource(R.string.join_ride_label), onJoinRideClick, true)
+        else -> {
+            val joinLabel = if (canJoinRide) {
+                stringResource(R.string.join_ride_label)
+            } else {
+                joinRideBlockedLabel ?: stringResource(R.string.join_ride_blocked_active_conflict)
+            }
+            Triple(joinLabel, onJoinRideClick, canJoinRide)
+        }
     }
 
     Box(

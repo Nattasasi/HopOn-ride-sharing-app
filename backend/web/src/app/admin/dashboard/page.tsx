@@ -3,13 +3,21 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useQuery } from '@tanstack/react-query';
-import axios from '@/lib/axios';
+import axios, { SOCKET_BASE_URL } from '@/lib/axios';
 import { Card } from '@/components/ui/card';
+import { DashboardPageSkeleton } from '@/app/components/PageSkeletons';
 
-const socket = io('http://localhost:5000');
+const socket = io(SOCKET_BASE_URL);
+
+type EmergencyAlert = {
+  alert_id?: string;
+  message?: string;
+  lat?: number;
+  lng?: number;
+};
 
 export default function DashboardPage() {
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<EmergencyAlert[]>([]);
 
   const { data: kpis, isLoading } = useQuery({
     queryKey: ['admin-dashboard'],
@@ -20,7 +28,7 @@ export default function DashboardPage() {
     const token = localStorage.getItem('token');
     if (token) {
       socket.emit('join_admin', token);
-    }
+    }/*  */
 
     socket.on('emergency', (alert) => {
       setAlerts(prev => [alert, ...prev]);
@@ -30,6 +38,10 @@ export default function DashboardPage() {
       socket.off('emergency');
     };
   }, []);
+
+  if (isLoading) {
+    return <DashboardPageSkeleton />;
+  }
 
   return (
     <div className="p-6 space-y-6">

@@ -21,9 +21,9 @@ interface RideRepository {
 
     /**
      * Creates a new carpool post from a UI-layer [CreateRideSubmission].
-     * Returns a [RideListItem] on success, or null on failure.
+     * Returns [Result.success] with [RideListItem] on success.
      */
-    suspend fun createRide(submission: CreateRideSubmission): RideListItem?
+    suspend fun createRide(submission: CreateRideSubmission): Result<RideListItem>
 
     /**
      * Fetches a single ride by its API post ID.

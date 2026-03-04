@@ -1,11 +1,11 @@
 "use client";
 
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { AuthProvider } from './components/AuthContext'; // Import AuthProvider
+import AppShell from './components/AppShell';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,7 +35,7 @@ export default function RootLayout({
       >
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
-            {children}
+            <AppShell>{children}</AppShell>
           </AuthProvider>
         </QueryClientProvider>
       </body>

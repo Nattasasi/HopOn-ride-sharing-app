@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const EmergencyAlert = require('../models/EmergencyAlert');
 
-const createEmergency = async (req, res, io) => {
+const createEmergency = async (req, res) => {
   const alert = new EmergencyAlert({
     alert_id: uuidv4(),
     ...req.body
@@ -9,7 +9,10 @@ const createEmergency = async (req, res, io) => {
   await alert.save();
 
   // Emit to admin room
-  io.to('admin').emit('emergency', alert);
+  const io = req.app.get('io');
+  if (io) {
+    io.to('admin').emit('emergency', alert);
+  }
 
   res.status(201).json(alert);
 };

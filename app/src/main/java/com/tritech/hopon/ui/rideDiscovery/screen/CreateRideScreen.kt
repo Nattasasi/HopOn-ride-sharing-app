@@ -127,6 +127,7 @@ fun createRideScreen(
     var pricePerSeat by rememberSaveable { mutableStateOf("0") }
     var showVehicleMenu by remember { mutableStateOf(false) }
     var showContactMenu by remember { mutableStateOf(false) }
+    var vehiclePlate by rememberSaveable { mutableStateOf("") }
     var vehicleInfo by rememberSaveable(defaultVehicleInfo) { mutableStateOf(defaultVehicleInfo) }
     var contactInfo by rememberSaveable(defaultContactInfo) { mutableStateOf(defaultContactInfo) }
     var notes by rememberSaveable { mutableStateOf("") }
@@ -413,6 +414,35 @@ fun createRideScreen(
             }
 
             Text(
+                text = stringResource(id = R.string.create_ride_vehicle_plate_label),
+                style = MaterialTheme.typography.titleMedium,
+                color = colorResource(id = R.color.colorPrimaryDark),
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp)
+            )
+            TextField(
+                value = vehiclePlate,
+                onValueChange = { input ->
+                    vehiclePlate = input.uppercase().take(12)
+                },
+                placeholder = { Text(stringResource(id = R.string.create_ride_vehicle_plate_hint)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next
+                ),
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = Color.Black,
+                    unfocusedTextColor = Color.Black,
+                    focusedContainerColor = colorResource(id = R.color.light_grey),
+                    unfocusedContainerColor = colorResource(id = R.color.light_grey),
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = primaryColor
+                ),
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Text(
                 text = stringResource(id = R.string.create_ride_notes_short_label),
                 style = MaterialTheme.typography.titleMedium,
                 color = colorResource(id = R.color.colorPrimaryDark),
@@ -480,6 +510,7 @@ fun createRideScreen(
                         waitTimeMinutes = parsedWaitTime,
                         maxPeopleCount = parsedMaxPeople,
                         pricePerSeat = parsedPrice,
+                        vehiclePlate = vehiclePlate.trim(),
                         vehicleInfo = normalizedVehicleInfo,
                         contactInfo = normalizedContactInfo,
                         additionalNotes = normalizedNotes

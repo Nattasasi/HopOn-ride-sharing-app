@@ -4,12 +4,18 @@ const User = require('../models/User');
 const CarpoolPost = require('../models/CarpoolPost');
 
 const createFeedback = async (req, res) => {
-  const post = await CarpoolPost.findById(req.body.post_id);
+  const post = await CarpoolPost.findById(req.body.post_id)
+    || await CarpoolPost.findOne({ post_id: req.body.post_id });
+  if (!post) return res.status(404).json({ message: 'Ride not found' });
   if (post.status !== 'completed') return res.status(400).json({ message: 'Ride not completed' });
 
   const feedback = new Feedback({
     feedback_id: uuidv4(),
-    ...req.body
+    post_id: post._id,
+    reviewer_id: req.body.reviewer_id,
+    reviewee_id: req.body.reviewee_id,
+    rating: req.body.rating,
+    comment: req.body.comment
   });
   await feedback.save();
 

@@ -1,7 +1,8 @@
 // web/src/app/components/AuthContext.tsx
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 interface AuthContextType {
   isLoggedIn: boolean;
@@ -13,18 +14,17 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Check localStorage on mount for existing session
+  const router = useRouter();
+  const [userId, setUserId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('userId');
+  });
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
     const storedUserId = localStorage.getItem('userId');
     const storedToken = localStorage.getItem('token');
-    if (storedUserId && storedToken) {
-      setIsLoggedIn(true);
-      setUserId(storedUserId);
-    }
-  }, []);
+    return Boolean(storedUserId && storedToken);
+  });
 
   const login = (id: string, token: string) => {
     localStorage.setItem('userId', id);
@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('token');
     setIsLoggedIn(false);
     setUserId(null);
+    router.push('/');
   };
 
   return (

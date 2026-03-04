@@ -79,8 +79,10 @@ fun rideDetailScreen(
     hostUserId: String? = null,
     currentUserId: String? = null,
     currentUserName: String? = null,
+    hostVerificationStatus: String? = null,
     hostRating: Float,
     hostVehicleType: String,
+    vehiclePlate: String? = null,
     peopleCount: Int,
     /** Price per seat in Thai Baht (0 if unknown). */
     pricePerSeat: Double = 0.0,
@@ -93,7 +95,14 @@ fun rideDetailScreen(
     /** All booking requests for this ride (host view). */
     bookingRequests: List<ApiBooking> = emptyList(),
     onApproveRequest: (bookingId: String) -> Unit = {},
-    onDeclineRequest: (bookingId: String) -> Unit = {}
+    onDeclineRequest: (bookingId: String) -> Unit = {},
+    cancelWindowInfo: String? = null,
+    isCancelWindowExpired: Boolean = false,
+    showReportDriverAction: Boolean = false,
+    onReportDriverClick: () -> Unit = {},
+    showHostRideActions: Boolean = false,
+    onGroupChatClick: () -> Unit = {},
+    onCancelRideClick: () -> Unit = {}
 ) {
     val isCurrentUserHost = when {
         !currentUserId.isNullOrBlank() && !hostUserId.isNullOrBlank() -> hostUserId == currentUserId
@@ -151,6 +160,19 @@ fun rideDetailScreen(
                     textColor = badgeColors.textColor
                 )
             }
+        }
+
+        cancelWindowInfo?.takeIf { it.isNotBlank() }?.let { text ->
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isCancelWindowExpired) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    Color.DarkGray
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         if (isCurrentUserHost && pendingRequestCount > 0) {
@@ -214,6 +236,17 @@ fun rideDetailScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
+        if (!vehiclePlate.isNullOrBlank()) {
+            Text(
+                text = stringResource(id = R.string.vehicle_plate_format, vehiclePlate),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.DarkGray,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        hostVerificationBadge(hostVerificationStatus)
+
         Text(
             text = stringResource(id = R.string.people_count_format, peopleCount),
             style = MaterialTheme.typography.bodyMedium,
@@ -261,6 +294,55 @@ fun rideDetailScreen(
                 )
             }
         }
+
+        if (showReportDriverAction) {
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = onReportDriverClick,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.report_driver))
+            }
+        }
+
+        if (showHostRideActions) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Button(
+                onClick = onGroupChatClick,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.group_chat))
+            }
+            OutlinedButton(
+                onClick = onCancelRideClick,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.cancel_ride))
+            }
+        }
+    }
+}
+
+@Composable
+private fun hostVerificationBadge(status: String?) {
+    val normalized = status?.trim()?.lowercase(Locale.US) ?: "unverified"
+    val (label, tone) = when (normalized) {
+        "verified" -> stringResource(R.string.verification_status_verified) to HopOnBadgeTone.GREEN
+        "pending" -> stringResource(R.string.verification_status_pending) to HopOnBadgeTone.YELLOW
+        "rejected" -> stringResource(R.string.verification_status_rejected) to HopOnBadgeTone.BLUE
+        else -> stringResource(R.string.verification_status_unverified) to HopOnBadgeTone.BLUE
+    }
+    val colors = hopOnBadgeColors(tone)
+    Row(modifier = Modifier.fillMaxWidth()) {
+        statusBadge(
+            text = label,
+            backgroundColor = colors.backgroundColor,
+            textColor = colors.textColor
+        )
     }
 }
 

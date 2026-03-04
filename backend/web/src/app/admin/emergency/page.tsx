@@ -3,15 +3,23 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { Button } from '@/components/ui/button';
+import { SOCKET_BASE_URL } from '@/lib/axios';
 
-const socket = io(process.env.NEXT_PUBLIC_API_URL);
+const socket = io(SOCKET_BASE_URL);
 
 export default function Emergency() {
   const [alerts, setAlerts] = useState([]);
 
   useEffect(() => {
-    socket.emit('join_admin', localStorage.getItem('token'));
+    const token = localStorage.getItem('token');
+    if (token) {
+      socket.emit('join_admin', token);
+    }
     socket.on('emergency', (alert) => setAlerts(prev => [...prev, alert]));
+
+    return () => {
+      socket.off('emergency');
+    };
   }, []);
 
   const resolve = async (id: string) => {

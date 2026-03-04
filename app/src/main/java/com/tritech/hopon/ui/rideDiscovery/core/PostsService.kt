@@ -50,4 +50,8 @@ interface PostsService {
         @Path("id") postId: String,
         @Body request: ApiUpdateStatusRequest
     ): ApiCarpoolPost
+
+    /** Start active ride and mark non-boarded passengers as left behind. */
+    @PATCH("posts/{id}/start")
+    suspend fun startRide(@Path("id") postId: String): ApiCarpoolPost
 }

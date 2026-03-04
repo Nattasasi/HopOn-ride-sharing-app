@@ -48,6 +48,7 @@ fun rideResultCard(
     hostUserId: String? = null,
     currentUserId: String? = null,
     currentUserName: String? = null,
+    hostVerificationStatus: String? = null,
     waitTimeMinutes: Int,
     peopleCount: Int,
     maxPeopleCount: Int = 4,
@@ -203,6 +204,7 @@ fun rideResultCard(
                         text = stringResource(id = R.string.people_ratio_format, peopleCount, maxPeopleCount)
                     )
                 }
+                hostVerificationStatusBadge(hostVerificationStatus)
             }
         }
     }
@@ -232,6 +234,30 @@ private fun rideRoleBadge(role: RideParticipationRole) {
         backgroundColor = roleBadgeColors.backgroundColor,
         textColor = roleBadgeColors.textColor
     )
+}
+
+@Composable
+private fun hostVerificationStatusBadge(status: String?) {
+    val normalized = status?.trim()?.lowercase(Locale.US) ?: "unverified"
+    val (label, tone) = when (normalized) {
+        "verified" -> stringResource(R.string.verification_status_verified) to HopOnBadgeTone.GREEN
+        "pending" -> stringResource(R.string.verification_status_pending) to HopOnBadgeTone.YELLOW
+        "rejected" -> stringResource(R.string.verification_status_rejected) to HopOnBadgeTone.BLUE
+        else -> stringResource(R.string.verification_status_unverified) to HopOnBadgeTone.BLUE
+    }
+    val colors = hopOnBadgeColors(tone)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        statusBadge(
+            text = label,
+            backgroundColor = colors.backgroundColor,
+            textColor = colors.textColor
+        )
+    }
 }
 
 @Composable

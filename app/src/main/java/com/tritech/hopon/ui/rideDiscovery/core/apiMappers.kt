@@ -53,6 +53,23 @@ fun isoToDateLabel(isoString: String): String {
     return isoString
 }
 
+/**
+ * Parses ISO 8601 to epoch millis.
+ * Returns null on parse failure.
+ */
+fun isoToEpochMillis(isoString: String): Long? {
+    for (pattern in iso8601Formats) {
+        try {
+            val sdf = SimpleDateFormat(pattern, Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+            val date = sdf.parse(isoString) ?: continue
+            return date.time
+        } catch (_: Exception) { /* try next pattern */ }
+    }
+    return null
+}
+
 // ─── Distance helper ──────────────────────────────────────────────────────────
 
 /**
@@ -92,6 +109,7 @@ fun ApiCarpoolPost.toRideListItem(
     val lifecycleStatus = when (status) {
         "in_progress" -> RideLifecycleStatus.ONGOING
         "completed"   -> RideLifecycleStatus.COMPLETED
+        "cancelled"   -> RideLifecycleStatus.CANCELLED
         else          -> RideLifecycleStatus.UPCOMING
     }
 
@@ -102,6 +120,12 @@ fun ApiCarpoolPost.toRideListItem(
     }
 
     val resolvedHostName = driver_id.fullName.ifBlank { "Unknown host" }
+    val resolvedHostVerificationStatus = when (
+        driver_id.verification_status?.takeIf { it.isNotBlank() }?.lowercase(Locale.US)
+    ) {
+        "pending", "verified", "rejected", "unverified" -> driver_id.verification_status?.lowercase(Locale.US)
+        else -> if (driver_id.is_verified == true) "verified" else "unverified"
+    }
 
     return RideListItem(
         meetupLabel          = start_location_name,
@@ -114,7 +138,9 @@ fun ApiCarpoolPost.toRideListItem(
         hostName             = resolvedHostName,
         hostRating           = driver_id.rating?.toFloat() ?: 0f,
         hostVehicleType      = vehicle_info.orEmpty(),
+        vehiclePlate         = vehicle_plate,
         hostUserId           = driver_id.id,
+        hostVerificationStatus = resolvedHostVerificationStatus,
         peopleCount          = total_seats - available_seats,
         maxPeopleCount       = total_seats,
         participationRole    = participationRole,
@@ -123,7 +149,8 @@ fun ApiCarpoolPost.toRideListItem(
         lifecycleStatus      = lifecycleStatus,
         postId               = id,
         postUuid             = post_id.orEmpty(),
-        pricePerSeat         = price_per_seat
+        pricePerSeat         = price_per_seat,
+        departureEpochMillis = isoToEpochMillis(departure_time)
     )
 }
 
@@ -154,6 +181,7 @@ fun CreateRideSubmission.toApiCreatePostRequest(departureTimeIso: String): ApiCr
         total_seats         = maxPeopleCount,
         price_per_seat      = pricePerSeat,
         vehicle_info        = vehicleInfo.takeIf { it.isNotBlank() },
+        vehicle_plate       = vehiclePlate.takeIf { it.isNotBlank() },
         contact_info        = contactInfo.takeIf { it.isNotBlank() },
         additional_notes    = additionalNotes.takeIf { it.isNotBlank() },
         wait_time_minutes   = waitTimeMinutes
@@ -203,6 +231,7 @@ fun List<ApiMessage>.toMockChatMessages(): List<MockChatMessage> = map { it.toMo
  */
 fun normaliseBookingStatus(raw: String?): String? = when (raw) {
     "confirmed" -> "confirmed"   // keep as-is; UI maps this to "Accepted"
+    "accepted"  -> "confirmed"   // backward compatibility for legacy rows/states
     null        -> null
     else        -> raw
 }

@@ -1,15 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from '@/lib/axios';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { AdminTablePageSkeleton } from '@/app/components/PageSkeletons';
 
 export default function AdminPostsPage() {
   const [status, setStatus] = useState('');
+  const [search, setSearch] = useState('');
   const queryClient = useQueryClient();
+  const statusOptions = ['', 'active', 'in_progress', 'completed', 'cancelled'];
 
   const { data: posts, isLoading } = useQuery({
     queryKey: ['admin-posts', status],
@@ -39,26 +43,70 @@ export default function AdminPostsPage() {
     }
   };
 
+  const filteredPosts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return posts ?? [];
+
+    return (posts ?? []).filter((post: any) => {
+      const rowContent = [
+        post.start_location_name,
+        post.end_location_name,
+        `${post.driver_id?.first_name ?? ''} ${post.driver_id?.last_name ?? ''}`.trim(),
+        post.driver_id?.email,
+        post.status,
+        post.available_seats,
+        post.total_seats,
+        post.departure_time ? new Date(post.departure_time).toLocaleString() : '',
+      ]
+        .filter((value) => value !== null && value !== undefined)
+        .join(' ')
+        .toLowerCase();
+
+      return rowContent.includes(query);
+    });
+  }, [posts, search]);
+
+  if (isLoading) {
+    return <AdminTablePageSkeleton hasFilterPills columns={6} />;
+  }
+
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Ride Post Management</h1>
-        <div className="flex gap-2">
-          {['', 'active', 'in_progress', 'completed', 'cancelled'].map((s) => (
-            <Button 
-              key={s} 
-              variant={status === s ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatus(s)}
-              className="capitalize"
-            >
-              {s || 'All'}
-            </Button>
-          ))}
-        </div>
       </div>
 
       <Card className="p-4">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <Input
+            placeholder="Search rides..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full max-w-sm rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+
+          <div className="flex flex-wrap gap-2">
+            {statusOptions.map((s) => {
+              const selected = status === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s)}
+                  className={[
+                    'rounded-md border border-gray-300 px-3 py-2 text-sm font-medium capitalize transition-colors',
+                    selected
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-white text-gray-700 hover:bg-gray-50',
+                  ].join(' ')}
+                >
+                  {s || 'All'}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <Table>
           <TableHeader>
             <TableRow>
@@ -71,16 +119,12 @@ export default function AdminPostsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">Loading rides...</TableCell>
-              </TableRow>
-            ) : posts?.length === 0 ? (
+            {filteredPosts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8">No rides found.</TableCell>
               </TableRow>
             ) : (
-              posts?.map((post: any) => (
+              filteredPosts.map((post: any) => (
                 <TableRow key={post._id}>
                   <TableCell>
                     <div className="text-sm">

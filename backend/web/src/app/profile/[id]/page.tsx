@@ -2,20 +2,25 @@
 
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import axios from '@/lib/axios';
+import { ProfilePageSkeleton } from '@/app/components/PageSkeletons';
 
 export default function Profile() {
   const { id } = useParams();
 
-  const { data: user } = useQuery({
+  const { data: user, isLoading: isUserLoading } = useQuery({
     queryKey: ['user', id],
     queryFn: () => axios.get(`/api/v1/users/${id}`).then(res => res.data)
   });
 
-  const { data: feedback } = useQuery({
+  const { data: feedback, isLoading: isFeedbackLoading } = useQuery({
     queryKey: ['feedback', id],
     queryFn: () => axios.get(`/api/v1/users/${id}/feedback`).then(res => res.data)
   });
+
+  if (isUserLoading || isFeedbackLoading) {
+    return <ProfilePageSkeleton />;
+  }
 
   return (
     <div>

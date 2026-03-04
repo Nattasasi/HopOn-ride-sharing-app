@@ -21,14 +21,14 @@ const register = [
     const existingUser = await User.findOne({ email });
     if (existingUser) return res.status(400).json({ message: 'User exists' });
 
-    const password_hash = await bcrypt.hash(password, 10);
+
     const user = new User({
       user_id: uuidv4(),
       first_name,
       last_name,
       email,
       dob,
-      password_hash,
+      password_hash: password,
       phone_number,
       role,
     });

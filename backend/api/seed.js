@@ -12,7 +12,6 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
 const User = require('./models/User');
@@ -134,14 +133,14 @@ async function run() {
   for (const u of TEST_USERS) {
     let user = await User.findOne({ email: u.email });
     if (!user) {
-      const password_hash = await bcrypt.hash(u.password, 10);
       user = await User.create({
         user_id: uuidv4(),
         first_name: u.first_name,
         last_name:  u.last_name,
         email:      u.email,
         dob:        u.dob,
-        password_hash,
+        // Let User pre-save middleware hash this exactly once.
+        password_hash: u.password,
         phone_number:   u.phone_number,
         role:           u.role,
         average_rating: u.average_rating,

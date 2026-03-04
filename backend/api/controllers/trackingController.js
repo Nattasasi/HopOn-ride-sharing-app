@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const RidesTracking = require('../models/RidesTracking');
 
-const updateTracking = async (req, res, io) => {
+const updateTracking = async (req, res) => {
   const { current_lat, current_lng, eta_minutes } = req.body;
   const log = new RidesTracking({
     log_id: uuidv4(),
@@ -13,7 +13,10 @@ const updateTracking = async (req, res, io) => {
   await log.save();
 
   // Emit to post room
-  io.to(`post_${req.params.postId}`).emit('location_update', log);
+  const io = req.app.get('io');
+  if (io) {
+    io.to(`post_${req.params.postId}`).emit('location_update', log);
+  }
 
   res.json(log);
 };

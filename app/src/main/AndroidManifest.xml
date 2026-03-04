@@ -42,6 +42,11 @@
             android:theme="@style/AppTheme" />
 
         <activity
+            android:name=".ui.rideDiscovery.screen.EditProfileActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity
             android:name=".ui.rideDiscovery.screen.RootHostActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustNothing"
