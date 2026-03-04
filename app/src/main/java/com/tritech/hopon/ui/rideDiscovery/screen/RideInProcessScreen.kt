@@ -94,6 +94,8 @@ fun rideInProcessScreen(
     onDriverConfirmBoardedClick: (bookingId: String) -> Unit = {},
     onDriverStartRideClick: () -> Unit = {},
     onDriverCompleteRideClick: () -> Unit = {},
+    showEmergencyAction: Boolean = false,
+    onEmergencyClick: () -> Unit = {},
     cancelWindowInfo: String? = null,
     isCancelRideEnabled: Boolean = true,
     onCancelRideClick: () -> Unit = {},
@@ -312,6 +314,15 @@ fun rideInProcessScreen(
                     onClick = onDriverCompleteRideClick,
                     enabled = !isActionLoading,
                     modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (showEmergencyAction) {
+                hopOnButton(
+                    text = stringResource(id = R.string.emergency_action),
+                    onClick = onEmergencyClick,
+                    enabled = !isActionLoading,
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = colorResource(id = R.color.cancelRideRed)
                 )
             }
             cancelWindowInfo?.takeIf { it.isNotBlank() }?.let { info ->

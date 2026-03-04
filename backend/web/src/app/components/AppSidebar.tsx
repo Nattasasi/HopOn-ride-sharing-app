@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useMemo } from 'react';
 import { useAuth } from './AuthContext';
 
 type NavItem = {
@@ -13,7 +14,6 @@ const mainNav: NavItem[] = [
   { href: '/home', label: 'Home' },
   { href: '/posts', label: 'Browse Rides' },
   { href: '/posts/create', label: 'Create Ride' },
-  { href: '/settings', label: 'Settings' },
 ];
 
 const adminNav: NavItem[] = [
@@ -24,6 +24,7 @@ const adminNav: NavItem[] = [
   { href: '/admin/verifications', label: 'Verifications' },
   { href: '/admin/reports', label: 'Reports' },
   { href: '/admin/emergency', label: 'Emergency' },
+  { href: '/admin/settings', label: 'Settings' },
 ];
 
 function itemClassName(active: boolean) {
@@ -38,6 +39,17 @@ function itemClassName(active: boolean) {
 export default function AppSidebar() {
   const pathname = usePathname();
   const { logout } = useAuth();
+  const isAdminUser = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1] || ''));
+      return payload?.role === 'admin';
+    } catch {
+      return false;
+    }
+  }, []);
 
   const isIdLike = (segment: string) => {
     const isNumeric = /^[0-9]+$/.test(segment);
@@ -64,6 +76,9 @@ export default function AppSidebar() {
     return false;
   };
 
+  const isOnAdminRoute = pathname.startsWith('/admin');
+  const showAdminOnly = isAdminUser || isOnAdminRoute;
+
   return (
     <aside className="w-72 shrink-0 border-r border-gray-200 bg-white px-5 py-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
       <div className="flex h-full flex-col">
@@ -73,35 +88,37 @@ export default function AppSidebar() {
         </div>
 
         <nav className="space-y-6">
-          <div>
-            <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-300">
-              Main
-            </p>
-            <ul className="space-y-1.5">
-              {mainNav.map((item) => (
-                <li key={item.href}>
-                  <Link href={item.href} className={itemClassName(isActive(item.href))}>
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-300">
-              Admin
-            </p>
-            <ul className="space-y-1.5">
-              {adminNav.map((item) => (
-                <li key={item.href}>
-                  <Link href={item.href} className={itemClassName(isActive(item.href))}>
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {showAdminOnly ? (
+            <div>
+              <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-300">
+                Admin
+              </p>
+              <ul className="space-y-1.5">
+                {adminNav.map((item) => (
+                  <li key={item.href}>
+                    <Link href={item.href} className={itemClassName(isActive(item.href))}>
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div>
+              <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-300">
+                Main
+              </p>
+              <ul className="space-y-1.5">
+                {mainNav.map((item) => (
+                  <li key={item.href}>
+                    <Link href={item.href} className={itemClassName(isActive(item.href))}>
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </nav>
 
         <div className="mt-auto pt-6">

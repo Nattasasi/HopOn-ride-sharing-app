@@ -96,6 +96,7 @@ import com.tritech.hopon.ui.rideDiscovery.core.ApiMessage
 import com.tritech.hopon.ui.rideDiscovery.core.ApiBookingRepository
 import com.tritech.hopon.ui.rideDiscovery.core.ApiClient
 import com.tritech.hopon.ui.rideDiscovery.core.ApiCreateFeedbackRequest
+import com.tritech.hopon.ui.rideDiscovery.core.ApiCreateEmergencyRequest
 import com.tritech.hopon.ui.rideDiscovery.core.ApiCreatePaymentRequest
 import com.tritech.hopon.ui.rideDiscovery.core.ApiCreateReportRequest
 import com.tritech.hopon.ui.rideDiscovery.core.ApiSubmitVerificationRequest
@@ -104,6 +105,7 @@ import com.tritech.hopon.ui.rideDiscovery.core.ApiRideRepository
 import com.tritech.hopon.ui.rideDiscovery.core.ApiUpdateStatusRequest
 import com.tritech.hopon.ui.rideDiscovery.core.BookingRepository
 import com.tritech.hopon.ui.rideDiscovery.core.ChatSocketManager
+import com.tritech.hopon.ui.rideDiscovery.core.EmergencyService
 import com.tritech.hopon.ui.rideDiscovery.core.FeedbackService
 import com.tritech.hopon.ui.rideDiscovery.core.MessagesService
 import com.tritech.hopon.ui.rideDiscovery.core.PaymentsService
@@ -644,6 +646,8 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 onDriverConfirmBoardedClick = ::handleDriverConfirmBoardedClick,
                 onDriverStartRideClick = ::handleDriverStartRideClick,
                 onDriverCompleteRideClick = ::handleDriverCompleteRideClick,
+                showEmergencyAction = ride?.lifecycleStatus == RideLifecycleStatus.ONGOING,
+                onEmergencyClick = ::handleEmergencyClick,
                 cancelWindowInfo = ride?.let { cancelWindowInfoLabel(it) },
                 isCancelRideEnabled = ride?.let { isCancellationAllowedForRide(it) } ?: true,
                 onCancelRideClick = ::showCancelRideConfirmation,
@@ -2780,6 +2784,57 @@ class RootHostActivity : AppCompatActivity(), MapsView, OnMapReadyCallback {
                 }
             )
         }
+    }
+
+    private fun handleEmergencyClick() {
+        val ride = activeInProcessRide ?: return
+        if (ride.postId.isBlank()) return
+
+        val alertLatLng = currentLatLng ?: ride.meetupLatLng
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.emergency_confirm_title))
+            .setMessage(getString(R.string.emergency_confirm_message))
+            .setNegativeButton(getString(R.string.go_back), null)
+            .setPositiveButton(getString(R.string.emergency_action), null)
+            .create()
+
+        dialog.setOnShowListener {
+            val actionButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            actionButton.setTextColor(ContextCompat.getColor(this, R.color.cancelRideRed))
+            actionButton.setOnClickListener {
+                isInProcessActionLoading = true
+                lifecycleScope.launch {
+                    val result = runCatching {
+                        ApiClient.create<EmergencyService>(this@RootHostActivity)
+                            .createEmergency(
+                                ApiCreateEmergencyRequest(
+                                    post_id = ride.postId,
+                                    lat = alertLatLng.latitude,
+                                    lng = alertLatLng.longitude
+                                )
+                            )
+                    }
+                    isInProcessActionLoading = false
+                    result.fold(
+                        onSuccess = {
+                            dialog.dismiss()
+                            Toast.makeText(
+                                this@RootHostActivity,
+                                getString(R.string.emergency_sent_success),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        onFailure = { error ->
+                            val msg = extractApiErrorMessage(error)
+                                ?: error.message
+                                ?: getString(R.string.booking_error_generic)
+                            Toast.makeText(this@RootHostActivity, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun canCurrentUserReportRide(ride: RideListItem, stage: String): Boolean {

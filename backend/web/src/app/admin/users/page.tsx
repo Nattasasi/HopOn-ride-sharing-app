@@ -7,10 +7,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 import { AdminTablePageSkeleton } from '@/app/components/PageSkeletons';
+
+const PAGE_SIZE = 10;
 
 export default function UsersPage() {
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
 
   const { data: users, isLoading } = useQuery({
@@ -53,6 +64,18 @@ export default function UsersPage() {
     });
   }, [users, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const paginatedUsers = filteredUsers.slice(startIndex, startIndex + PAGE_SIZE);
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 1) return [1];
+    const start = Math.max(1, currentPage - 2);
+    const end = Math.min(totalPages, start + 4);
+    return Array.from({ length: end - start + 1 }, (_, idx) => start + idx);
+  }, [currentPage, totalPages]);
+
   if (isLoading) {
     return <AdminTablePageSkeleton columns={5} />;
   }
@@ -68,7 +91,10 @@ export default function UsersPage() {
           <Input 
             placeholder="Search users..." 
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="w-full max-w-sm rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -89,7 +115,7 @@ export default function UsersPage() {
                 <TableCell colSpan={5} className="text-center py-8">No users found.</TableCell>
               </TableRow>
             ) : (
-              filteredUsers.map((user: any) => (
+              paginatedUsers.map((user: any) => (
                 <TableRow key={user._id}>
                   <TableCell className="font-medium">{user.first_name} {user.last_name}</TableCell>
                   <TableCell>{user.email}</TableCell>
@@ -115,6 +141,49 @@ export default function UsersPage() {
             )}
           </TableBody>
         </Table>
+
+        {filteredUsers.length > PAGE_SIZE ? (
+          <Pagination className="mt-4">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPage((prev) => Math.max(1, prev - 1));
+                  }}
+                  aria-disabled={currentPage <= 1}
+                  className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                />
+              </PaginationItem>
+              {pageNumbers.map((num) => (
+                <PaginationItem key={num}>
+                  <PaginationLink
+                    href="#"
+                    isActive={num === currentPage}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPage(num);
+                    }}
+                  >
+                    {num}
+                  </PaginationLink>
+                </PaginationItem>
+              ))}
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPage((prev) => Math.min(totalPages, prev + 1));
+                  }}
+                  aria-disabled={currentPage >= totalPages}
+                  className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        ) : null}
       </Card>
     </div>
   );

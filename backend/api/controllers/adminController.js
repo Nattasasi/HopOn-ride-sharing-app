@@ -3,6 +3,7 @@ const CarpoolPost = require('../models/CarpoolPost');
 const EmergencyAlert = require('../models/EmergencyAlert');
 const Booking = require('../models/Booking');
 const VerificationRequest = require('../models/VerificationRequest');
+const mongoose = require('mongoose');
 
 const getUsers = async (req, res) => {
   try {
@@ -56,12 +57,39 @@ const getBookings = async (req, res) => {
   try {
     const bookings = await Booking.find()
       .populate('passenger_id', 'first_name last_name email')
-      .populate({
-        path: 'post_id',
-        populate: { path: 'driver_id', select: 'first_name last_name' }
-      })
       .sort({ booked_at: -1 });
-    res.json(bookings);
+
+    const postPublicIds = [];
+    const postMongoIds = [];
+    for (const booking of bookings) {
+      const value = booking.post_id;
+      if (typeof value !== 'string' || value.trim() === '') continue;
+      if (mongoose.Types.ObjectId.isValid(value)) {
+        postMongoIds.push(new mongoose.Types.ObjectId(value));
+      } else {
+        postPublicIds.push(value);
+      }
+    }
+
+    const postQuery = [];
+    if (postPublicIds.length > 0) postQuery.push({ post_id: { $in: [...new Set(postPublicIds)] } });
+    if (postMongoIds.length > 0) postQuery.push({ _id: { $in: postMongoIds } });
+
+    const posts = postQuery.length === 0
+      ? []
+      : await CarpoolPost.find({ $or: postQuery })
+      .populate('driver_id', '_id first_name last_name email')
+      .lean();
+
+    const postByPublicId = new Map(posts.map((post) => [post.post_id, post]));
+    const postByMongoId = new Map(posts.map((post) => [post._id.toString(), post]));
+    const hydrated = bookings.map((booking) => {
+      const plain = booking.toObject();
+      plain.post = postByPublicId.get(plain.post_id) || postByMongoId.get(plain.post_id) || null;
+      return plain;
+    });
+
+    res.json(hydrated);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching bookings', error: error.message });
   }

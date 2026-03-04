@@ -256,6 +256,10 @@
     <string name="ride_in_process_passenger_states_title">Passenger check-in status</string>
     <string name="ride_start_action">Start ride</string>
     <string name="ride_complete_action">Complete ride</string>
+    <string name="emergency_action">Emergency</string>
+    <string name="emergency_confirm_title">Send emergency alert?</string>
+    <string name="emergency_confirm_message">This sends your current ride location to admin for urgent help.</string>
+    <string name="emergency_sent_success">Emergency alert sent</string>
     <string name="ride_start_success">Ride started.</string>
     <string name="wait_timer_remaining_prefix">Wait timer: %1$s remaining</string>
     <string name="wait_timer_ready_to_start">Wait timer complete. You can start the ride.</string>

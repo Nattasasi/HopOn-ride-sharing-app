@@ -169,6 +169,22 @@ data class ApiUpdateStatusRequest(
     val status: String
 )
 
+data class ApiCreateEmergencyRequest(
+    val post_id: String,
+    val lat: Double,
+    val lng: Double
+)
+
+data class ApiEmergencyAlert(
+    val alert_id: String? = null,
+    @SerializedName("post_id") val post_id: ApiCarpoolPost? = null,
+    @SerializedName("reporter_id") val reporter_id: ApiUser? = null,
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val resolved: Boolean? = null,
+    val created_at: String? = null
+)
+
 // ─── Booking ──────────────────────────────────────────────────────────────────
 
 /**

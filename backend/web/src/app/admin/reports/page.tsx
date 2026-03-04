@@ -8,6 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 import { AdminTablePageSkeleton } from '@/app/components/PageSkeletons';
 
 type UserLite = {
@@ -41,6 +49,7 @@ type ReportRow = {
 const socket = io(SOCKET_BASE_URL);
 
 const REPORT_STATUSES: Array<ReportRow['status']> = ['pending', 'reviewed', 'resolved', 'dismissed'];
+const PAGE_SIZE = 10;
 
 function asUser(value: ReportRow['reporter_id']): UserLite | null {
   if (!value || typeof value === 'string') return null;
@@ -59,6 +68,7 @@ function userName(user: UserLite | null): string {
 
 export default function AdminReportsPage() {
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [socketReports, setSocketReports] = useState<Record<string, ReportRow>>({});
   const queryClient = useQueryClient();
 
@@ -135,6 +145,18 @@ export default function AdminReportsPage() {
     });
   }, [allReports, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredReports.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const paginatedReports = filteredReports.slice(startIndex, startIndex + PAGE_SIZE);
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 1) return [1];
+    const start = Math.max(1, currentPage - 2);
+    const end = Math.min(totalPages, start + 4);
+    return Array.from({ length: end - start + 1 }, (_, idx) => start + idx);
+  }, [currentPage, totalPages]);
+
   if (isLoading) {
     return <AdminTablePageSkeleton columns={8} />;
   }
@@ -150,7 +172,10 @@ export default function AdminReportsPage() {
           <Input
             placeholder="Search reports..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             className="w-full max-w-sm rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -176,7 +201,7 @@ export default function AdminReportsPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredReports.map((report) => {
+              paginatedReports.map((report) => {
                 const reporter = asUser(report.reporter_id);
                 const reported = asUser(report.reported_user_id);
                 const createdAt = report.created_at ? new Date(report.created_at).toLocaleString() : '-';
@@ -226,6 +251,49 @@ export default function AdminReportsPage() {
             )}
           </TableBody>
         </Table>
+
+        {filteredReports.length > PAGE_SIZE ? (
+          <Pagination className="mt-4">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPage((prev) => Math.max(1, prev - 1));
+                  }}
+                  aria-disabled={currentPage <= 1}
+                  className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                />
+              </PaginationItem>
+              {pageNumbers.map((num) => (
+                <PaginationItem key={num}>
+                  <PaginationLink
+                    href="#"
+                    isActive={num === currentPage}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setPage(num);
+                    }}
+                  >
+                    {num}
+                  </PaginationLink>
+                </PaginationItem>
+              ))}
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPage((prev) => Math.min(totalPages, prev + 1));
+                  }}
+                  aria-disabled={currentPage >= totalPages}
+                  className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        ) : null}
       </Card>
     </div>
   );
