@@ -14,9 +14,11 @@ const io = new Server(server, {
     origin: '*',
   }
 });
+app.set('io', io);
 
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
@@ -24,10 +26,8 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Routes
-// Apply authMiddleware globally for demo to populate req.user but never block
-app.use(authMiddleware);
-
 app.use('/api/v1/auth', require('./routes/auth'));
+app.use(authMiddleware);
 app.use('/api/v1/posts', require('./routes/posts'));
 app.use('/api/v1/bookings', require('./routes/bookings'));
 app.use('/api/v1/users', require('./routes/users'));
@@ -37,6 +37,7 @@ app.use('/api/v1/payments', require('./routes/payments'));
 app.use('/api/v1/feedback', require('./routes/feedback'));
 app.use('/api/v1/emergency', require('./routes/emergency'));
 app.use('/api/v1/messages', require('./routes/messages'));
+app.use('/api/v1/reports', require('./routes/reports'));
 
 // Socket.io setup
 require('./socket')(io);

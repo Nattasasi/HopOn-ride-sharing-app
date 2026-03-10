@@ -51,6 +51,14 @@ interface BookingsService {
         @Body request: ApiRespondBookingRequest
     ): ApiBooking
 
+    /** Passenger check-in: marks booking as arrived/in car. */
+    @PATCH("bookings/{id}/arrive")
+    suspend fun markArrived(@Path("id") bookingId: String): ApiBooking
+
+    /** Driver action: confirms passenger is boarded. */
+    @PATCH("bookings/{id}/confirm-boarded")
+    suspend fun confirmBoarded(@Path("id") bookingId: String): ApiBooking
+
     /**
      * Cancel an existing booking.
      * Backend returns { message, booking } envelope.

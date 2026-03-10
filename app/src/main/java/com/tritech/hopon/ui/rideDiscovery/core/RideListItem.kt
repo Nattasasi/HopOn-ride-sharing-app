@@ -10,7 +10,8 @@ enum class RideParticipationRole {
 enum class RideLifecycleStatus {
     ONGOING,
     UPCOMING,
-    COMPLETED
+    COMPLETED,
+    CANCELLED
 }
 
 data class RideListItem(
@@ -24,8 +25,11 @@ data class RideListItem(
     val hostName: String,
     val hostRating: Float,
     val hostVehicleType: String,
+    val vehiclePlate: String? = null,
     /** MongoDB `_id` of the driver / host user — used for feedback submission. */
     val hostUserId: String = "",
+    /** Verification status of host account: unverified | pending | verified | rejected. */
+    val hostVerificationStatus: String? = null,
     val peopleCount: Int,
     val maxPeopleCount: Int,
     val participationRole: RideParticipationRole? = null,
@@ -41,6 +45,8 @@ data class RideListItem(
     val postUuid: String = "",
     /** Price per seat in Thai Baht as returned by the API. */
     val pricePerSeat: Double = 0.0,
+    /** Epoch millis of departure time when available from API. */
+    val departureEpochMillis: Long? = null,
     /**
      * MongoDB `_id` of the current user's active booking for this ride, if any.
      * Null when the user has not booked or when the ride is a mock item.

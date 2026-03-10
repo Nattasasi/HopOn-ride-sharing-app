@@ -52,6 +52,16 @@ class ApiBookingRepository(private val context: Context) : BookingRepository {
             service.respondToBooking(bookingId, ApiRespondBookingRequest(status))
         }.onFailure { Log.e(TAG, "respondToBooking($bookingId, accept=$accept) failed", it) }
 
+    override suspend fun markArrived(bookingId: String): Result<ApiBooking> =
+        runCatching {
+            service.markArrived(bookingId)
+        }.onFailure { Log.e(TAG, "markArrived($bookingId) failed", it) }
+
+    override suspend fun confirmBoarded(bookingId: String): Result<ApiBooking> =
+        runCatching {
+            service.confirmBoarded(bookingId)
+        }.onFailure { Log.e(TAG, "confirmBoarded($bookingId) failed", it) }
+
     override suspend fun cancelBooking(bookingId: String): Result<ApiBooking?> =
         runCatching {
             val response = service.cancelBooking(bookingId)

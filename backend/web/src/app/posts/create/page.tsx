@@ -3,13 +3,15 @@
 
 import { useState, useEffect } from 'react'; // Import useEffect
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
+import axios from '@/lib/axios';
+import { isAxiosError } from 'axios';
 import { Input, Button } from '@/components/ui';
 import { useAuth } from '@/app/components/AuthContext'; // Adjust path if necessary
 
 export default function CreatePostPage() {
   const router = useRouter();
-  const { userId, isLoggedIn } = useAuth(); // Get userId and isLoggedIn from AuthContext
+  const { isLoggedIn } = useAuth();
+  const [isHydrated, setIsHydrated] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -26,15 +28,19 @@ export default function CreatePostPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Redirect if not logged in
   useEffect(() => {
-    if (!isLoggedIn) {
+    setIsHydrated(true);
+  }, []);
+
+  // Redirect if not logged in (after client hydration)
+  useEffect(() => {
+    if (isHydrated && !isLoggedIn) {
       router.push('/');
     }
-  }, [isLoggedIn, router]); // Dependency array to re-run when isLoggedIn or router changes
+  }, [isHydrated, isLoggedIn, router]); // Dependency array to re-run when auth state changes
 
-  if (!isLoggedIn) {
-    // Render a placeholder or null while redirecting
+  if (!isHydrated || !isLoggedIn) {
+    // Render a stable placeholder while hydrating/redirecting
     return <div className="p-8 text-center">Please log in to create a post. Redirecting...</div>;
   }
 
@@ -52,13 +58,6 @@ export default function CreatePostPage() {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token'); // Retrieve token
-      if (!token) {
-        setError('Authentication token not found. Please log in again.');
-        setLoading(false);
-        return;
-      }
-
       // Prepare data, converting numbers
       const postData = {
         ...formData,
@@ -70,26 +69,19 @@ export default function CreatePostPage() {
         price_per_seat: parseFloat(formData.price_per_seat),
       };
 
-      // Set axios default base URL if not already set globally
-      // (This should ideally be done once in a global config)
-      axios.defaults.baseURL = axios.defaults.baseURL || 'http://localhost:5000';
-
-
-      await axios.post('/api/v1/posts', postData, {
-        headers: {
-          Authorization: `Bearer ${token}`, // Attach token for authentication
-        },
-      });
+      await axios.post('/api/v1/posts', postData);
 
       alert('Carpool post created successfully!');
       router.push('/posts'); // Redirect to posts list after creation
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to create carpool post:', err);
-      if (axios.isAxiosError(err) && err.response && err.response.data && err.response.data.message) {
+      if (isAxiosError(err) && err.response && err.response.data && err.response.data.message) {
         setError(err.response.data.message);
-      } else if (axios.isAxiosError(err) && err.response && err.response.data && err.response.data.errors) {
+      } else if (isAxiosError(err) && err.response && err.response.data && err.response.data.errors) {
           // Handle validation errors from express-validator
-          const validationErrors = err.response.data.errors.map((e: any) => e.msg).join(', ');
+          const validationErrors = (err.response.data.errors as Array<{ msg: string }>)
+            .map((e) => e.msg)
+            .join(', ');
           setError(`Validation Failed: ${validationErrors}`);
       }
       else {

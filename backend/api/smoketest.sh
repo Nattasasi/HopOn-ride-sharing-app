@@ -1,13 +1,21 @@
 #!/bin/bash
 set -e
 
-BASE="http://localhost:3001/api/v1"
+BASE="${BASE_URL:-http://localhost:5000/api/v1}"
 
 echo "=== 1. Login (rider) ==="
 LOGIN=$(curl -s -X POST "$BASE/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"email":"rider@hopon.test","password":"password123"}')
-TOKEN=$(echo "$LOGIN" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+TOKEN=$(echo "$LOGIN" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('token',''))")
+if [ -z "$TOKEN" ]; then
+  echo "Login failed. Response:"
+  echo "$LOGIN"
+  echo ""
+  echo "Hint: seed test users first with:"
+  echo "  cd backend/api && node seed.js --fresh"
+  exit 1
+fi
 echo "Token obtained: ${TOKEN:0:50}..."
 
 echo ""
@@ -53,7 +61,11 @@ echo "=== 4. PATCH /bookings/:id/respond (driver accepts via _id) ==="
 # login as driver
 DRIVER_TOKEN=$(curl -s -X POST "$BASE/auth/login" \
   -H "Content-Type: application/json" \
-  -d '{"email":"driver@hopon.test","password":"password123"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+  -d '{"email":"driver@hopon.test","password":"password123"}' | python3 -c "import sys,json; data=json.load(sys.stdin); print(data.get('token',''))")
+if [ -z "$DRIVER_TOKEN" ]; then
+  echo "Driver login failed."
+  exit 1
+fi
 RESPOND=$(curl -s -X PATCH "$BASE/bookings/$BOOKING_ID/respond" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $DRIVER_TOKEN" \

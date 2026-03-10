@@ -1,8 +1,11 @@
 package com.tritech.hopon.ui.rideDiscovery.screen
 
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,17 +25,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
@@ -44,10 +49,20 @@ import com.tritech.hopon.ui.components.hopOnButton
 @Composable
 fun profileScreen(
     userName: String,
+    profilePhotoBase64: String?,
+    verificationStatus: String?,
+    onPersonalInformationClick: () -> Unit,
+    onVerificationClick: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
     val primary = colorResource(id = R.color.colorPrimary)
     val gray = colorResource(id = R.color.colorPrimaryDark)
+    val personalInfoLabel = stringResource(id = R.string.profile_personal_information)
+    val verificationLabel = stringResource(id = R.string.profile_verification_safety)
+
+    val profileImageBitmap = remember(profilePhotoBase64) {
+        decodeBase64ToBitmap(profilePhotoBase64)?.asImageBitmap()
+    }
 
     Column(
         modifier = Modifier
@@ -80,7 +95,18 @@ fun profileScreen(
                 .size(148.dp)
                 .align(Alignment.CenterHorizontally)
                 .background(color = gray.copy(alpha = 0.38f), shape = CircleShape)
-        )
+        ) {
+            if (profileImageBitmap != null) {
+                androidx.compose.foundation.Image(
+                    bitmap = profileImageBitmap,
+                    contentDescription = userName,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
 
         Text(
             text = userName,
@@ -103,16 +129,38 @@ fun profileScreen(
         settingGroupCard(
             rows = listOf(
                 SettingRowItem(
-                    label = stringResource(id = R.string.profile_personal_information),
+                    label = personalInfoLabel,
                     leadingIcon = Icons.Default.Person
-                ),
-                SettingRowItem(
-                    label = stringResource(id = R.string.profile_preferences),
-                    leadingIcon = Icons.Default.Settings
                 )
             ),
             primaryTint = primary,
             secondaryTint = gray,
+            onRowClick = { row ->
+                if (row.label == personalInfoLabel) {
+                    onPersonalInformationClick()
+                }
+            },
+            modifier = Modifier.padding(top = 10.dp)
+        )
+
+        Text(
+            text = verificationLabel,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = gray,
+            modifier = Modifier.padding(top = 22.dp)
+        )
+
+        settingGroupCard(
+            rows = listOf(
+                SettingRowItem(
+                    label = verificationStatusDisplayLabel(verificationStatus),
+                    leadingIcon = Icons.Default.CreditCard
+                )
+            ),
+            primaryTint = primary,
+            secondaryTint = gray,
+            onRowClick = { onVerificationClick() },
             modifier = Modifier.padding(top = 10.dp)
         )
 
@@ -165,6 +213,7 @@ private fun settingGroupCard(
     rows: List<SettingRowItem>,
     primaryTint: Color,
     secondaryTint: Color,
+    onRowClick: ((SettingRowItem) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -181,6 +230,7 @@ private fun settingGroupCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clickable(enabled = onRowClick != null) { onRowClick?.invoke(row) }
                     .padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -207,4 +257,22 @@ private fun settingGroupCard(
             }
         }
     }
+}
+
+@Composable
+private fun verificationStatusDisplayLabel(status: String?): String {
+    return when (status?.trim()?.lowercase()) {
+        "verified" -> stringResource(R.string.verification_status_verified)
+        "pending" -> stringResource(R.string.verification_status_pending)
+        "rejected" -> stringResource(R.string.verification_status_rejected)
+        else -> stringResource(R.string.verification_status_unverified)
+    }
+}
+
+private fun decodeBase64ToBitmap(base64: String?): android.graphics.Bitmap? {
+    if (base64.isNullOrBlank()) return null
+    return runCatching {
+        val bytes = Base64.decode(base64, Base64.DEFAULT)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }.getOrNull()
 }

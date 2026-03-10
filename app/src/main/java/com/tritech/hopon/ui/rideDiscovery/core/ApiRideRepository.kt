@@ -36,6 +36,9 @@ class ApiRideRepository(
         radiusKm: Double?
     ): List<RideListItem> = runCatching {
         val posts = postsService.getNearbyPosts(lat, lng, radiusKm)
+            .filter { it.status.equals("active", ignoreCase = true) }
+            .filter { (isoToEpochMillis(it.departure_time) ?: Long.MIN_VALUE) > System.currentTimeMillis() }
+            .filter { it.available_seats > 0 }
         val userLatLng = currentUserLatLng()
         posts.toRideListItems(userLatLng, currentUserId)
             .sortedBy { it.pickupDistanceMeters }
@@ -53,16 +56,15 @@ class ApiRideRepository(
         emptyList()
     }
 
-    override suspend fun createRide(submission: CreateRideSubmission): RideListItem? =
+    override suspend fun createRide(submission: CreateRideSubmission): Result<RideListItem> =
         runCatching {
             val isoTime = meetupSubmissionToIso(submission.meetupDate, submission.meetupTime)
             val request = submission.toApiCreatePostRequest(isoTime)
             val post = postsService.createPost(request)
             val userLatLng = currentUserLatLng()
             post.toRideListItem(userLatLng, currentUserId)
-        }.getOrElse { e ->
+        }.onFailure { e ->
             Log.w(TAG, "createRide failed: ${e.message}")
-            null
         }
 
     override suspend fun getRideDetail(postId: String): RideListItem? = runCatching {

@@ -221,6 +221,7 @@ fun rideResultsBottomSheetPanel(
                                             hostUserId = ride.hostUserId,
                                             currentUserId = currentUserId,
                                             currentUserName = currentUserName,
+                                            hostVerificationStatus = ride.hostVerificationStatus,
                                             waitTimeMinutes = ride.waitTimeMinutes,
                                             peopleCount = ride.peopleCount,
                                             maxPeopleCount = ride.maxPeopleCount,

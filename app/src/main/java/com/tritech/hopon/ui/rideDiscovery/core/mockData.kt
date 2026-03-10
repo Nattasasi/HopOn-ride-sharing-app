@@ -55,6 +55,7 @@ data class CreateRideSubmission(
     val waitTimeMinutes: Int,
     val maxPeopleCount: Int,
     val pricePerSeat: Double = 0.0,
+    val vehiclePlate: String = "",
     val vehicleInfo: String,
     val contactInfo: String,
     val additionalNotes: String

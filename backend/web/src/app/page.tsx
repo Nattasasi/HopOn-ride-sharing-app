@@ -13,6 +13,18 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (isLoggedIn) {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1] || ''));
+          if (payload?.role === 'admin') {
+            router.push('/admin/dashboard');
+            return;
+          }
+        } catch {
+          // Ignore token parse errors and fallback to default.
+        }
+      }
       router.push('/home');
     }
   }, [isLoggedIn, router]);

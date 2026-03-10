@@ -73,14 +73,6 @@ fun mapsBottomNavigation(
         modifier = Modifier
             .fillMaxWidth()
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(Color.LightGray)
-                .align(Alignment.TopCenter)
-        )
-
         NavigationBar(
             modifier = Modifier.fillMaxWidth(),
             containerColor = Color.White,

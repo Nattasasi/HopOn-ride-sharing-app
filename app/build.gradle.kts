@@ -6,10 +6,10 @@ val localProps = gradleLocalProperties(rootDir, providers)
 fun localProp(name: String): String? = localProps.getProperty(name)?.trim()
 
 val emulatorApiBaseUrl = localProp("apiBaseUrlEmulator")
-    ?: "http://10.0.2.2:3001/api/v1/"
+    ?: "http://10.0.2.2:5000/api/v1/"
 val deviceApiBaseUrl = localProp("apiBaseUrlDevice")
     ?: localProp("apiBaseUrl")
-    ?: "http://192.168.1.13:3001/api/v1/"
+    ?: "http://127.0.0.1:5000/api/v1/"
 
 plugins {
     id("com.android.application")
