@@ -20,3 +20,6 @@ GoogleService-Info.plist
 
 # Local/dev scripts with sensitive test data
 backend/api/userSeeder.js
+
+.gradle/
+build/
