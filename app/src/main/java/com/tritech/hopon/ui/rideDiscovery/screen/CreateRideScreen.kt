@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.width
@@ -31,13 +32,16 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerState
+import androidx.compose.material3.TimePickerDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.AlertDialog
@@ -107,31 +111,32 @@ fun createRideScreen(
     onPredictionClick: (AutocompletePrediction) -> Unit,
     onDismissLocationOverlay: () -> Unit,
     onBackClick: () -> Unit,
+    defaultVehicleName: String,
+    defaultVehicleColor: String,
+    defaultVehiclePlate: String,
+    defaultContactInfo: String,
     onCreateRideClick: (CreateRideSubmission) -> Unit
 ) {
     val primaryColor = colorResource(id = R.color.colorPrimary)
+    val surfaceTint = colorResource(id = R.color.light_grey)
     val neutralIconColor = colorResource(id = R.color.colorPrimaryDark)
-    val defaultVehicleInfo = stringResource(id = R.string.default_vehicle_info)
-    val defaultContactInfo = stringResource(id = R.string.default_contact_info)
     val defaultWaitTime = stringResource(id = R.string.create_ride_default_wait_time)
     val currentLocationFallback = stringResource(id = R.string.current_location_unavailable)
     val meetupSelectionError = stringResource(id = R.string.create_ride_select_meetup_error)
     val destinationSelectionError = stringResource(id = R.string.create_ride_select_destination_error)
+    val vehicleSettingsMissingError = stringResource(id = R.string.create_ride_vehicle_settings_missing_profile)
     var createRideValidationMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
     var date by rememberSaveable { mutableStateOf("") }
-    var time by rememberSaveable { mutableStateOf("") }
+    var time by rememberSaveable {
+        mutableStateOf(RideDateTimeFormatter.canonicalTimeLabelForNow(Calendar.getInstance()))
+    }
     var waitTime by rememberSaveable(defaultWaitTime) { mutableStateOf(defaultWaitTime) }
     var maxPeople by rememberSaveable { mutableStateOf(4) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showMaxPeopleMenu by remember { mutableStateOf(false) }
     var pricePerSeat by rememberSaveable { mutableStateOf("0") }
-    var showVehicleMenu by remember { mutableStateOf(false) }
-    var showContactMenu by remember { mutableStateOf(false) }
-    var vehiclePlate by rememberSaveable { mutableStateOf("") }
-    var vehicleInfo by rememberSaveable(defaultVehicleInfo) { mutableStateOf(defaultVehicleInfo) }
-    var contactInfo by rememberSaveable(defaultContactInfo) { mutableStateOf(defaultContactInfo) }
     var notes by rememberSaveable { mutableStateOf("") }
     var locationBoxX by remember { mutableIntStateOf(0) }
     var locationBoxBottomY by remember { mutableIntStateOf(0) }
@@ -141,8 +146,6 @@ fun createRideScreen(
     val focusManager = LocalFocusManager.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     var wasImeVisible by remember { mutableStateOf(false) }
-    val vehicleOptions = listOf(defaultVehicleInfo)
-    val contactOptions = listOf(defaultContactInfo)
 
     fun dismissEditingUi() {
         focusManager.clearFocus(force = true)
@@ -193,7 +196,7 @@ fun createRideScreen(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                         contentDescription = stringResource(id = R.string.create_ride_back),
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     )
                 }
                 Spacer(modifier = Modifier.size(6.dp))
@@ -324,11 +327,15 @@ fun createRideScreen(
                     )
                     DropdownMenu(
                         expanded = showMaxPeopleMenu,
-                        onDismissRequest = { showMaxPeopleMenu = false }
+                        onDismissRequest = { showMaxPeopleMenu = false },
+                        containerColor = Color.White
                     ) {
-                        (1..12).forEach { count ->
+                        (1..6).forEach { count ->
                             DropdownMenuItem(
-                                text = { Text(count.toString()) },
+                                text = { Text(count.toString(), color = Color.Black) },
+                                colors = MenuDefaults.itemColors(
+                                    textColor = Color.Black
+                                ),
                                 onClick = {
                                     maxPeople = count
                                     showMaxPeopleMenu = false
@@ -382,67 +389,6 @@ fun createRideScreen(
                     modifier = Modifier.width(72.dp)
                 )
             }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(22.dp)
-            ) {
-                createRideInfoDisplay(
-                    label = stringResource(id = R.string.vehicle_label),
-                    value = vehicleInfo,
-                    expanded = showVehicleMenu,
-                    options = vehicleOptions,
-                    onExpandedChange = { showVehicleMenu = it },
-                    onOptionSelected = { selected ->
-                        vehicleInfo = selected
-                        showVehicleMenu = false
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                createRideInfoDisplay(
-                    label = stringResource(id = R.string.contact_label),
-                    value = contactInfo,
-                    expanded = showContactMenu,
-                    options = contactOptions,
-                    onExpandedChange = { showContactMenu = it },
-                    onOptionSelected = { selected ->
-                        contactInfo = selected
-                        showContactMenu = false
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Text(
-                text = stringResource(id = R.string.create_ride_vehicle_plate_label),
-                style = MaterialTheme.typography.titleMedium,
-                color = colorResource(id = R.color.colorPrimaryDark),
-                modifier = Modifier.padding(top = 8.dp, start = 4.dp)
-            )
-            TextField(
-                value = vehiclePlate,
-                onValueChange = { input ->
-                    vehiclePlate = input.uppercase().take(12)
-                },
-                placeholder = { Text(stringResource(id = R.string.create_ride_vehicle_plate_hint)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    imeAction = ImeAction.Next
-                ),
-                colors = TextFieldDefaults.colors(
-                    focusedTextColor = Color.Black,
-                    unfocusedTextColor = Color.Black,
-                    focusedContainerColor = colorResource(id = R.color.light_grey),
-                    unfocusedContainerColor = colorResource(id = R.color.light_grey),
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    cursorColor = primaryColor
-                ),
-                shape = MaterialTheme.shapes.large,
-                modifier = Modifier.fillMaxWidth()
-            )
 
             Text(
                 text = stringResource(id = R.string.create_ride_notes_short_label),
@@ -505,8 +451,10 @@ fun createRideScreen(
                 val normalizedTime = time.trim()
                 val parsedWaitTime = waitTime.trim().toIntOrNull()?.coerceAtLeast(0) ?: 0
                 val parsedMaxPeople = maxPeople.coerceAtLeast(1)
-                val normalizedVehicleInfo = vehicleInfo.trim().ifEmpty { defaultVehicleInfo }
-                val normalizedContactInfo = contactInfo.trim().ifEmpty { defaultContactInfo }
+                val normalizedVehicleName = defaultVehicleName.trim()
+                val normalizedVehicleColor = defaultVehicleColor.trim()
+                val normalizedVehiclePlate = defaultVehiclePlate.trim().uppercase()
+                val normalizedContactInfo = defaultContactInfo.trim()
                 val normalizedNotes = notes.trim()
 
                 if (resolvedMeetupLatLng == null || normalizedMeetup == currentLocationFallback) {
@@ -516,6 +464,16 @@ fun createRideScreen(
 
                 if (resolvedDestinationLatLng == null || normalizedDestination.isBlank()) {
                     createRideValidationMessage = destinationSelectionError
+                    return@hopOnButton
+                }
+
+                if (
+                    normalizedVehicleName.isBlank() ||
+                    normalizedVehicleColor.isBlank() ||
+                    normalizedVehiclePlate.isBlank() ||
+                    normalizedContactInfo.isBlank()
+                ) {
+                    createRideValidationMessage = vehicleSettingsMissingError
                     return@hopOnButton
                 }
 
@@ -533,8 +491,9 @@ fun createRideScreen(
                         waitTimeMinutes = parsedWaitTime,
                         maxPeopleCount = parsedMaxPeople,
                         pricePerSeat = parsedPrice,
-                        vehiclePlate = vehiclePlate.trim(),
-                        vehicleInfo = normalizedVehicleInfo,
+                        vehiclePlate = normalizedVehiclePlate,
+                        vehicleInfo = normalizedVehicleName,
+                        vehicleColor = normalizedVehicleColor,
                         contactInfo = normalizedContactInfo,
                         additionalNotes = normalizedNotes
                     )
@@ -544,6 +503,46 @@ fun createRideScreen(
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = 16.dp, vertical = 10.dp)
+        )
+
+        val normalizedDefaultPlate = defaultVehiclePlate.trim().uppercase()
+        val normalizedDefaultVehicleName = defaultVehicleName.trim()
+        val normalizedDefaultVehicleColor = defaultVehicleColor.trim()
+        val normalizedDefaultContact = defaultContactInfo.trim()
+        val areVehicleSettingsComplete = normalizedDefaultVehicleName.isNotBlank() &&
+            normalizedDefaultVehicleColor.isNotBlank() &&
+            normalizedDefaultPlate.isNotBlank() &&
+            normalizedDefaultContact.isNotBlank()
+        Text(
+            text = if (areVehicleSettingsComplete) {
+                listOf(
+                    stringResource(
+                        id = R.string.create_ride_default_vehicle_name_helper,
+                        normalizedDefaultVehicleName
+                    ),
+                    stringResource(
+                        id = R.string.create_ride_default_vehicle_color_helper,
+                        normalizedDefaultVehicleColor
+                    ),
+                    stringResource(
+                        id = R.string.create_ride_default_plate_helper,
+                        normalizedDefaultPlate
+                    ),
+                    stringResource(
+                        id = R.string.create_ride_default_contact_helper,
+                        normalizedDefaultContact
+                    )
+                ).joinToString(separator = "\n")
+            } else {
+                stringResource(id = R.string.create_ride_default_settings_missing_helper)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = colorResource(id = R.color.colorPrimaryDark),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .padding(start = 20.dp, end = 20.dp, bottom = 62.dp)
         )
     }
 
@@ -575,8 +574,26 @@ fun createRideScreen(
         val datePickerState = rememberDatePickerState()
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
+            colors = DatePickerDefaults.colors(
+                containerColor = Color.White,
+                titleContentColor = Color.Black,
+                headlineContentColor = Color.Black,
+                selectedDayContainerColor = primaryColor,
+                selectedDayContentColor = Color.White,
+                todayDateBorderColor = primaryColor,
+                todayContentColor = primaryColor,
+                dayContentColor = Color.Black,
+                weekdayContentColor = neutralIconColor,
+                subheadContentColor = neutralIconColor,
+                navigationContentColor = primaryColor,
+                yearContentColor = Color.Black,
+                selectedYearContainerColor = primaryColor,
+                selectedYearContentColor = Color.White,
+                currentYearContentColor = primaryColor
+            ),
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(
+                    onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
                         val calendar = Calendar.getInstance().apply {
                             timeInMillis = millis
@@ -584,43 +601,110 @@ fun createRideScreen(
                         date = RideDateTimeFormatter.canonicalDateLabelForNow(calendar)
                     }
                     showDatePicker = false
-                }) {
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = primaryColor
+                    )
+                ) {
                     Text("OK")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
+                TextButton(
+                    onClick = { showDatePicker = false },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = primaryColor
+                    )
+                ) {
                     Text("Cancel")
                 }
             }
         ) {
-            DatePicker(state = datePickerState)
+            DatePicker(
+                state = datePickerState,
+                colors = DatePickerDefaults.colors(
+                    containerColor = Color.White,
+                    titleContentColor = Color.Black,
+                    headlineContentColor = Color.Black,
+                    selectedDayContainerColor = primaryColor,
+                    selectedDayContentColor = Color.White,
+                    todayDateBorderColor = primaryColor,
+                    todayContentColor = primaryColor,
+                    dayContentColor = Color.Black,
+                    weekdayContentColor = neutralIconColor,
+                    subheadContentColor = neutralIconColor,
+                    navigationContentColor = primaryColor,
+                    yearContentColor = Color.Black,
+                    selectedYearContainerColor = primaryColor,
+                    selectedYearContentColor = Color.White,
+                    currentYearContentColor = primaryColor
+                )
+            )
         }
     }
 
     if (showTimePicker) {
-        val timePickerState = rememberTimePickerState()
+        val currentCalendar = Calendar.getInstance()
+        val defaultHour = time.substringBefore(':').toIntOrNull()
+            ?: currentCalendar.get(Calendar.HOUR_OF_DAY)
+        val defaultMinute = time.substringAfter(':', missingDelimiterValue = "")
+            .toIntOrNull()
+            ?: currentCalendar.get(Calendar.MINUTE)
+        val timePickerState = rememberTimePickerState(
+            initialHour = defaultHour,
+            initialMinute = defaultMinute,
+            is24Hour = true
+        )
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
+            containerColor = Color.White,
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(
+                    onClick = {
                     val calendar = Calendar.getInstance().apply {
                         set(Calendar.HOUR_OF_DAY, timePickerState.hour)
                         set(Calendar.MINUTE, timePickerState.minute)
                     }
                     time = RideDateTimeFormatter.canonicalTimeLabelForNow(calendar)
                     showTimePicker = false
-                }) {
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = primaryColor
+                    )
+                ) {
                     Text("OK")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) {
+                TextButton(
+                    onClick = { showTimePicker = false },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                        contentColor = primaryColor
+                    )
+                ) {
                     Text("Cancel")
                 }
             },
             text = {
-                TimePicker(state = timePickerState)
+                TimePicker(
+                    state = timePickerState,
+                    colors = TimePickerDefaults.colors(
+                        selectorColor = primaryColor,
+                        containerColor = surfaceTint,
+                        periodSelectorBorderColor = primaryColor.copy(alpha = 0.35f),
+                        periodSelectorSelectedContainerColor = primaryColor,
+                        periodSelectorSelectedContentColor = Color.White,
+                        periodSelectorUnselectedContainerColor = surfaceTint,
+                        periodSelectorUnselectedContentColor = Color.Black,
+                        timeSelectorSelectedContainerColor = primaryColor,
+                        timeSelectorSelectedContentColor = Color.White,
+                        timeSelectorUnselectedContainerColor = surfaceTint,
+                        timeSelectorUnselectedContentColor = Color.Black,
+                        clockDialColor = surfaceTint,
+                        clockDialSelectedContentColor = Color.White,
+                        clockDialUnselectedContentColor = Color.Black
+                    )
+                )
             }
         )
     }
@@ -727,57 +811,3 @@ private fun createRideLocationField(
     )
 }
 
-@Composable
-private fun createRideInfoDisplay(
-    label: String,
-    value: String,
-    expanded: Boolean,
-    options: List<String>,
-    onExpandedChange: (Boolean) -> Unit,
-    onOptionSelected: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val primaryColor = colorResource(id = R.color.colorPrimary)
-    val subtleLabelColor = colorResource(id = R.color.colorPrimaryDark)
-
-    Column(modifier = modifier) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = subtleLabelColor.copy(alpha = 0.55f)
-        )
-        Box {
-            Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                    .padding(top = 2.dp)
-                    .clickable { onExpandedChange(true) },
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = value.ifBlank { stringResource(id = R.string.default_vehicle_info) },
-                    style = MaterialTheme.typography.titleLarge,
-                color = Color.Black
-            )
-            Icon(
-                imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = label,
-                tint = primaryColor,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { onExpandedChange(false) },
-                modifier = Modifier.heightIn(max = 200.dp)
-            ) {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option) },
-                        onClick = { onOptionSelected(option) }
-                    )
-                }
-            }
-        }
-    }
-}

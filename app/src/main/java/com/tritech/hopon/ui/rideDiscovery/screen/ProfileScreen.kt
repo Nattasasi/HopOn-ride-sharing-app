@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -51,6 +52,7 @@ fun profileScreen(
     profilePhotoBase64: String?,
     verificationStatus: String?,
     onPersonalInformationClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     onVerificationClick: () -> Unit,
     onIssueReportsClick: () -> Unit,
     onLogoutClick: () -> Unit
@@ -58,6 +60,7 @@ fun profileScreen(
     val primary = colorResource(id = R.color.colorPrimary)
     val gray = colorResource(id = R.color.colorPrimaryDark)
     val personalInfoLabel = stringResource(id = R.string.profile_personal_information)
+    val settingsLabel = stringResource(id = R.string.profile_settings_item_label)
     val verificationLabel = stringResource(id = R.string.profile_verification_safety)
     val issueReportsLabel = stringResource(id = R.string.report_status_title)
 
@@ -142,12 +145,19 @@ fun profileScreen(
                 SettingRowItem(
                     label = personalInfoLabel,
                     leadingIcon = Icons.Default.Person
+                ),
+                SettingRowItem(
+                    label = settingsLabel,
+                    leadingIcon = Icons.Default.Settings
                 )
             ),
             primaryTint = primary,
             secondaryTint = gray,
             onRowClick = { row ->
-                if (row.label == personalInfoLabel) onPersonalInformationClick()
+                when (row.label) {
+                    personalInfoLabel -> onPersonalInformationClick()
+                    settingsLabel -> onSettingsClick()
+                }
             },
             modifier = Modifier.padding(top = 10.dp)
         )

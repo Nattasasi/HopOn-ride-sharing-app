@@ -63,6 +63,22 @@ class LoginActivity : AppCompatActivity() {
                     val usersService = ApiClient.create<UsersService>(this@LoginActivity)
                     val user = usersService.getUser(userId)
                     SessionManager.setDisplayName(this@LoginActivity, user.fullName)
+                    SessionManager.setDefaultVehicleName(
+                        this@LoginActivity,
+                        user.default_vehicle_name.orEmpty()
+                    )
+                    SessionManager.setDefaultVehicleColor(
+                        this@LoginActivity,
+                        user.default_vehicle_color.orEmpty()
+                    )
+                    SessionManager.setDefaultVehiclePlate(
+                        this@LoginActivity,
+                        user.default_vehicle_plate.orEmpty()
+                    )
+                    SessionManager.setDefaultContactInfo(
+                        this@LoginActivity,
+                        user.default_contact_info.orEmpty()
+                    )
                 }
 
                 navigateToHome(intent)
@@ -86,9 +102,11 @@ class LoginActivity : AppCompatActivity() {
                 NotificationRouting.EXTRA_NOTIFICATION_TARGET,
                 NotificationRouting.EXTRA_NOTIFICATION_POST_ID,
                 NotificationRouting.EXTRA_NOTIFICATION_POST_UUID,
+                NotificationRouting.EXTRA_NOTIFICATION_BOOKING_ID,
                 "type",
                 "post_id",
-                "post_uuid"
+                "post_uuid",
+                "booking_id"
             ).forEach { key ->
                 val value = incoming.getStringExtra(key)
                 if (!value.isNullOrBlank()) {

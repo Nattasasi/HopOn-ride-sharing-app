@@ -85,7 +85,8 @@ fun groupChatScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = stringResource(id = R.string.group_chat_back)
+                    contentDescription = stringResource(id = R.string.group_chat_back),
+                    modifier = Modifier.size(36.dp)
                 )
             }
             Spacer(modifier = Modifier.size(8.dp))
@@ -254,7 +255,7 @@ fun groupChatScreen(
         val navBarBottomPx = WindowInsets.navigationBars.getBottom(density)
         val imeVisible = imeBottomPx > 0
         val composerBottomPadding = with(density) {
-            (imeBottomPx - navBarBottomPx).coerceAtLeast(0).toDp()
+            maxOf(imeBottomPx, navBarBottomPx).toDp()
         }
 
         Row(

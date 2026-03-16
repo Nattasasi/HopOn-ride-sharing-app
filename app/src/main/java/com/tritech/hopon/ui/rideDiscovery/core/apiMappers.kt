@@ -182,6 +182,7 @@ fun CreateRideSubmission.toApiCreatePostRequest(departureTimeIso: String): ApiCr
         price_per_seat      = pricePerSeat,
         vehicle_info        = vehicleInfo.takeIf { it.isNotBlank() },
         vehicle_plate       = vehiclePlate.takeIf { it.isNotBlank() },
+        vehicle_color       = vehicleColor.takeIf { it.isNotBlank() },
         contact_info        = contactInfo.takeIf { it.isNotBlank() },
         additional_notes    = additionalNotes.takeIf { it.isNotBlank() },
         wait_time_minutes   = waitTimeMinutes

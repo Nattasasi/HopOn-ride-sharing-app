@@ -45,6 +45,10 @@ data class ApiUser(
     val last_name: String,
     val email: String = "",
     val profile_photo: String? = null,
+    val default_vehicle_name: String? = null,
+    val default_vehicle_color: String? = null,
+    val default_vehicle_plate: String? = null,
+    val default_contact_info: String? = null,
     val phone_number: String? = null,
     val role: String? = null,
     val is_verified: Boolean? = null,
@@ -63,8 +67,12 @@ data class ApiUpdateUserRequest(
     val last_name: String? = null,
     val email: String? = null,
     val profile_photo: String? = null,
+    val default_vehicle_name: String? = null,
+    val default_vehicle_color: String? = null,
+    val default_vehicle_plate: String? = null,
+    val default_contact_info: String? = null,
     val password: String? = null,
-    val current_password: String
+    val current_password: String? = null
 )
 
 data class ApiSubmitVerificationRequest(
@@ -207,6 +215,7 @@ data class ApiBooking(
     val status: String? = "pending",
     val seats_booked: Int = 1,
     val pickup_status: String? = "not_arrived",
+    val pickup_code: String? = null,
     val arrived_at: String? = null,
     val confirmed_by_driver_at: String? = null,
     val left_behind_at: String? = null,

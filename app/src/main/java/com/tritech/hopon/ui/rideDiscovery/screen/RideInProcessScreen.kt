@@ -359,6 +359,18 @@ fun rideInProcessScreen(
                     enabled = canArrive && !isActionLoading,
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (pickupStatus == "arrived") {
+                    currentUserBooking?.pickup_code?.takeIf { it.isNotBlank() }?.let { code ->
+                        Text(
+                            text = stringResource(id = R.string.pickup_code_share_label, code),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.DarkGray,
+                            modifier = Modifier
+                                .padding(top = 6.dp)
+                                .fillMaxWidth()
+                        )
+                    }
+                }
             }
             if (isDriverView && showStartRideAction) {
                 hopOnButton(

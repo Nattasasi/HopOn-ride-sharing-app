@@ -17,6 +17,7 @@ const bookingSchema = new mongoose.Schema({
     default: 'not_arrived',
     required: true
   },
+  pickup_code: { type: String, default: null },
   arrived_at: { type: Date, default: null },
   confirmed_by_driver_at: { type: Date, default: null },
   left_behind_at: { type: Date, default: null },

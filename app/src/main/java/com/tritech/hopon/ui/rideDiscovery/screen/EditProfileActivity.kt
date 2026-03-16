@@ -26,7 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -176,11 +176,15 @@ private fun editProfileScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBackClick) {
+            IconButton(
+                onClick = onBackClick,
+                modifier = Modifier.size(36.dp)
+            ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                     contentDescription = stringResource(id = R.string.profile_edit_back),
-                    tint = Color.Black
+                    tint = Color.Black,
+                    modifier = Modifier.size(36.dp)
                 )
             }
             Text(
@@ -309,7 +313,7 @@ private fun editProfileScreen(
                     val trimmedCurrentPassword = currentPassword.trim()
                     val trimmedNewPassword = newPassword.trim()
 
-                    val hasProfileChanges = trimmedFirstName != originalFirstName ||
+                    val hasRemoteProfileChanges = trimmedFirstName != originalFirstName ||
                         trimmedLastName != originalLastName ||
                         trimmedEmail != originalEmail ||
                         photoChangedByPicker ||
@@ -317,7 +321,7 @@ private fun editProfileScreen(
                     val hasPasswordChange = trimmedNewPassword.isNotEmpty()
 
                     when {
-                        !hasProfileChanges && !hasPasswordChange -> {
+                        !hasRemoteProfileChanges && !hasPasswordChange -> {
                             successMessage = context.getString(R.string.profile_edit_no_changes)
                             errorMessage = null
                             return@hopOnButton
@@ -342,11 +346,11 @@ private fun editProfileScreen(
                     }
 
                     val request = ApiUpdateUserRequest(
-                        first_name = trimmedFirstName.takeIf { hasProfileChanges && it != originalFirstName },
-                        last_name = trimmedLastName.takeIf { hasProfileChanges && it != originalLastName },
-                        email = trimmedEmail.takeIf { hasProfileChanges && it != originalEmail },
+                        first_name = trimmedFirstName.takeIf { hasRemoteProfileChanges && it != originalFirstName },
+                        last_name = trimmedLastName.takeIf { hasRemoteProfileChanges && it != originalLastName },
+                        email = trimmedEmail.takeIf { hasRemoteProfileChanges && it != originalEmail },
                         profile_photo = photoBase64.takeIf {
-                            hasProfileChanges && (photoChangedByPicker || it != originalPhoto)
+                            hasRemoteProfileChanges && (photoChangedByPicker || it != originalPhoto)
                         },
                         password = trimmedNewPassword.takeIf { hasPasswordChange },
                         current_password = trimmedCurrentPassword

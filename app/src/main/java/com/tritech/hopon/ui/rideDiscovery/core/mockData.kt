@@ -57,6 +57,7 @@ data class CreateRideSubmission(
     val pricePerSeat: Double = 0.0,
     val vehiclePlate: String = "",
     val vehicleInfo: String,
+    val vehicleColor: String = "",
     val contactInfo: String,
     val additionalNotes: String
 )

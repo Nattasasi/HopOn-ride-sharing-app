@@ -15,6 +15,10 @@ const updateUser = [
   body('last_name').optional().notEmpty(),
   body('email').optional().isEmail(),
   body('profile_photo').optional({ checkFalsy: true }).isString(),
+  body('default_vehicle_name').optional({ checkFalsy: true }).isString(),
+  body('default_vehicle_color').optional({ checkFalsy: true }).isString(),
+  body('default_vehicle_plate').optional({ checkFalsy: true }).isString(),
+  body('default_contact_info').optional({ checkFalsy: true }).isString(),
   body('password').optional({ checkFalsy: true }).isLength({ min: 6 }),
   body('current_password').optional({ checkFalsy: true }).isString(),
   async (req, res) => {
@@ -35,6 +39,10 @@ const updateUser = [
         last_name,
         email,
         profile_photo: profilePhoto,
+        default_vehicle_name: defaultVehicleName,
+        default_vehicle_color: defaultVehicleColor,
+        default_vehicle_plate: defaultVehiclePlate,
+        default_contact_info: defaultContactInfo,
         password: newPassword,
         current_password: currentPassword,
       } = req.body;
@@ -60,26 +68,42 @@ const updateUser = [
         typeof email === 'string' && email.trim() !== '' ? email.trim() : undefined;
       const nextProfilePhoto =
         typeof profilePhoto === 'string' ? profilePhoto.trim() : undefined;
+      const nextDefaultVehicleName =
+        typeof defaultVehicleName === 'string' ? defaultVehicleName.trim() : undefined;
+      const nextDefaultVehicleColor =
+        typeof defaultVehicleColor === 'string' ? defaultVehicleColor.trim() : undefined;
+      const nextDefaultVehiclePlate =
+        typeof defaultVehiclePlate === 'string' ? defaultVehiclePlate.trim() : undefined;
+      const nextDefaultContactInfo =
+        typeof defaultContactInfo === 'string' ? defaultContactInfo.trim() : undefined;
 
-      const hasProfileChange =
+      const hasSensitiveProfileChange =
         (nextFirstName !== undefined && nextFirstName !== user.first_name) ||
         (nextLastName !== undefined && nextLastName !== user.last_name) ||
         (nextEmail !== undefined && nextEmail !== user.email) ||
         (nextProfilePhoto !== undefined && nextProfilePhoto !== (user.profile_photo || null));
+      const hasVehicleSettingsChange =
+        (nextDefaultVehicleName !== undefined && nextDefaultVehicleName !== (user.default_vehicle_name || null)) ||
+        (nextDefaultVehicleColor !== undefined && nextDefaultVehicleColor !== (user.default_vehicle_color || null)) ||
+        (nextDefaultVehiclePlate !== undefined && nextDefaultVehiclePlate !== (user.default_vehicle_plate || null)) ||
+        (nextDefaultContactInfo !== undefined && nextDefaultContactInfo !== (user.default_contact_info || null));
 
-      if (!hasProfileChange && !hasNewPassword) {
+      if (!hasSensitiveProfileChange && !hasVehicleSettingsChange && !hasNewPassword) {
         return res.status(400).json({ message: 'No changes to update' });
       }
 
-      if (!hasCurrentPassword) {
-        return res.status(400).json({
-          message: 'Current password is required to update profile',
-        });
-      }
+      const requiresCurrentPassword = hasSensitiveProfileChange || hasNewPassword;
+      if (requiresCurrentPassword) {
+        if (!hasCurrentPassword) {
+          return res.status(400).json({
+            message: 'Current password is required to update profile',
+          });
+        }
 
-      const isCurrentValid = await bcrypt.compare(currentPassword, user.password_hash);
-      if (!isCurrentValid) {
-        return res.status(400).json({ message: 'Current password is incorrect' });
+        const isCurrentValid = await bcrypt.compare(currentPassword, user.password_hash);
+        if (!isCurrentValid) {
+          return res.status(400).json({ message: 'Current password is incorrect' });
+        }
       }
 
       if (hasNewPassword) {
@@ -95,6 +119,10 @@ const updateUser = [
       if (nextLastName !== undefined) user.last_name = nextLastName;
       if (nextEmail !== undefined) user.email = nextEmail;
       if (nextProfilePhoto !== undefined) user.profile_photo = nextProfilePhoto || null;
+      if (nextDefaultVehicleName !== undefined) user.default_vehicle_name = nextDefaultVehicleName || null;
+      if (nextDefaultVehicleColor !== undefined) user.default_vehicle_color = nextDefaultVehicleColor || null;
+      if (nextDefaultVehiclePlate !== undefined) user.default_vehicle_plate = nextDefaultVehiclePlate || null;
+      if (nextDefaultContactInfo !== undefined) user.default_contact_info = nextDefaultContactInfo || null;
       if (hasNewPassword) user.password_hash = newPassword;
       user.updated_at = new Date();
 

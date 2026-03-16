@@ -31,6 +31,8 @@ const hasPassedCancellationCutoff = (departureTime) => {
   return Date.now() > cutoffEpoch;
 };
 
+const generatePickupCode = () => String(Math.floor(1000 + Math.random() * 9000));
+
 const hasRideDeparted = (departureTime) => {
   if (!departureTime) return false;
   const departureEpoch = new Date(departureTime).getTime();
@@ -437,6 +439,7 @@ const markBookingArrived = async (req, res) => {
 
     booking.pickup_status = PICKUP_STATUS_ARRIVED;
     booking.arrived_at = booking.arrived_at || new Date();
+    booking.pickup_code = booking.pickup_code || generatePickupCode();
     await booking.save();
 
     emitRideEvent(req, post._id.toString(), 'passenger_arrived', {
@@ -444,6 +447,7 @@ const markBookingArrived = async (req, res) => {
       post_id: post._id.toString(),
       post_uuid: post.post_id,
       passenger_id: booking.passenger_id.toString(),
+      pickup_code: booking.pickup_code,
       arrived_at: booking.arrived_at
     });
     emitUserEvent(req, post.driver_id.toString(), 'passenger_arrived', {
@@ -451,8 +455,27 @@ const markBookingArrived = async (req, res) => {
       post_id: post._id.toString(),
       post_uuid: post.post_id,
       passenger_id: booking.passenger_id.toString(),
+      pickup_code: booking.pickup_code,
       arrived_at: booking.arrived_at
     });
+
+    sendToUsers({
+      userIds: [post.driver_id.toString()],
+      notification: {
+        title: 'Passenger arrived',
+        body: 'A passenger says they arrived at pickup.'
+      },
+      data: {
+        type: 'passenger_arrived',
+        extra_notification_target: 'in_process',
+        booking_id: booking._id.toString(),
+        post_id: post._id.toString(),
+        post_uuid: post.post_id,
+        passenger_id: booking.passenger_id.toString(),
+        pickup_code: booking.pickup_code,
+        arrived_at: booking.arrived_at
+      }
+    }).catch((error) => console.error('Push notification failed:', error.message));
 
     res.json(booking);
   } catch (error) {

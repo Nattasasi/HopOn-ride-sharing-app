@@ -11,6 +11,7 @@ const {
 } = require('../utils/pagination');
 
 const ACTIVE_HOST_RIDE_STATUSES = ['active', 'in_progress'];
+const HOST_RIDE_CONFLICT_WINDOW_MS = 2 * 60 * 60 * 1000; // ±2 hours
 const CANCEL_CUTOFF_MINUTES = 30;
 const PICKUP_STATUS_BOARDED = 'boarded';
 const PICKUP_STATUS_LEFT_BEHIND = 'left_behind';
@@ -52,6 +53,29 @@ const hasPassedCancellationCutoff = (departureTime) => {
   if (Number.isNaN(departureEpoch)) return false;
   const cutoffEpoch = departureEpoch - (CANCEL_CUTOFF_MINUTES * 60 * 1000);
   return Date.now() > cutoffEpoch;
+};
+
+const hasRideTimeOverlap = (targetDeparture, candidateDeparture) => {
+  const targetEpoch = new Date(targetDeparture).getTime();
+  const candidateEpoch = new Date(candidateDeparture).getTime();
+  if (Number.isNaN(targetEpoch) || Number.isNaN(candidateEpoch)) return false;
+  return Math.abs(targetEpoch - candidateEpoch) < HOST_RIDE_CONFLICT_WINDOW_MS;
+};
+
+const findOverlappingHostedRide = async ({ driverId, departureTime, excludePostId = null }) => {
+  if (!driverId || !departureTime) return null;
+  const query = {
+    driver_id: driverId,
+    status: { $in: ACTIVE_HOST_RIDE_STATUSES }
+  };
+  if (excludePostId) {
+    query._id = { $ne: excludePostId };
+  }
+
+  const hostRides = await CarpoolPost.find(query)
+    .select('_id departure_time status')
+    .lean();
+  return hostRides.find((ride) => hasRideTimeOverlap(departureTime, ride.departure_time)) || null;
 };
 
 const sanitizeStartLocationName = (rawLabel, startLat, startLng) => {
@@ -133,15 +157,20 @@ const buildRideStartChecklist = (post, activeBookings, nowEpoch = Date.now()) =>
   const bookedPassengerBookings = activeBookings.filter((booking) =>
     CONFIRMED_LIKE_BOOKING_STATUSES.includes(booking.status)
   );
+  if (bookedPassengerBookings.length === 0) {
+    blockers.push({
+      code: 'NO_CONFIRMED_PASSENGERS',
+      message: 'At least one confirmed passenger is required before starting the ride.'
+    });
+  }
   const unboardedConfirmedBookings = bookedPassengerBookings.filter(
     (booking) => booking.pickup_status !== PICKUP_STATUS_BOARDED
   );
 
-  const noOneBookedYet = bookedPassengerBookings.length === 0;
-  const allBookedUsersBoarded = bookedPassengerBookings.every(
+  const allBookedUsersBoarded = bookedPassengerBookings.length > 0 && bookedPassengerBookings.every(
     (booking) => booking.pickup_status === PICKUP_STATUS_BOARDED
   );
-  const canBypassWaitTimer = noOneBookedYet || allBookedUsersBoarded;
+  const canBypassWaitTimer = allBookedUsersBoarded;
 
   const waitMinutes = Math.max(0, post.wait_time_minutes || 0);
   const waitUntilEpoch = new Date(post.departure_time).getTime() + (waitMinutes * 60 * 1000);
@@ -327,15 +356,15 @@ const createPost = [
       parsedStartLng
     );
 
-    const existingActiveHostedRide = await CarpoolPost.findOne({
-      driver_id: req.user.id,
-      status: { $in: ACTIVE_HOST_RIDE_STATUSES }
+    const overlappingHostedRide = await findOverlappingHostedRide({
+      driverId: req.user.id,
+      departureTime: req.body.departure_time
     });
 
-    if (existingActiveHostedRide) {
+    if (overlappingHostedRide) {
       return res.status(409).json({
-        code: 'ACTIVE_HOST_RIDE_CONFLICT',
-        message: 'You already have an active/in-progress hosted ride. Complete or cancel it before creating another.'
+        code: 'HOST_RIDE_TIME_OVERLAP',
+        message: 'Ride time overlaps with another hosted ride. Choose a different departure time.'
       });
     }
 
@@ -434,27 +463,47 @@ const updatePostStatus = async (req, res) => {
     return res.status(403).json({ message: 'Only the ride host can update status' });
   }
 
-  const isTransitioningToActiveHostedRide = status === 'active' || status === 'in_progress';
-  if (isTransitioningToActiveHostedRide) {
-    const otherActiveHostedRide = await CarpoolPost.findOne({
-      _id: { $ne: post._id },
-      driver_id: post.driver_id,
-      status: { $in: ACTIVE_HOST_RIDE_STATUSES }
+  if (status === 'active') {
+    const overlappingHostedRide = await findOverlappingHostedRide({
+      driverId: post.driver_id,
+      departureTime: post.departure_time,
+      excludePostId: post._id
     });
 
-    if (otherActiveHostedRide) {
+    if (overlappingHostedRide) {
       return res.status(409).json({
-        code: 'ACTIVE_HOST_RIDE_CONFLICT',
-        message: 'You already have another active/in-progress hosted ride. Complete or cancel it before starting a new one.'
+        code: 'HOST_RIDE_TIME_OVERLAP',
+        message: 'Ride time overlaps with another hosted ride. Choose a different departure time.'
       });
     }
   }
 
-  if (status === 'cancelled' && req.user.role !== 'admin' && hasPassedCancellationCutoff(post.departure_time)) {
-    return res.status(409).json({
-      code: 'CANCEL_CUTOFF_EXCEEDED',
-      message: 'Ride cancellation is not allowed within 30 minutes of departure.'
+  if (status === 'in_progress' && req.user.role !== 'admin') {
+    const ongoingHostedRide = await CarpoolPost.findOne({
+      _id: { $ne: post._id },
+      driver_id: post.driver_id,
+      status: 'in_progress'
+    }).select('_id').lean();
+
+    if (ongoingHostedRide) {
+      return res.status(409).json({
+        code: 'ONE_ONGOING_RIDE_ONLY',
+        message: 'You can only have one ongoing ride at a time.'
+      });
+    }
+  }
+
+  if (status === 'cancelled' && req.user.role !== 'admin') {
+    const hasPassengers = await Booking.exists({
+      post_id: post.post_id,
+      status: { $in: ACTIVE_BOOKING_STATUSES }
     });
+    if (hasPassengers && hasPassedCancellationCutoff(post.departure_time)) {
+      return res.status(409).json({
+        code: 'CANCEL_CUTOFF_EXCEEDED',
+        message: 'Ride cancellation is not allowed within 30 minutes of departure.'
+      });
+    }
   }
 
   post.status = status;
@@ -527,6 +576,21 @@ const startPostRide = async (req, res) => {
 
     if (post.status !== 'active') {
       return res.status(400).json({ message: 'Only active rides can be started' });
+    }
+
+    if (req.user.role !== 'admin') {
+      const ongoingHostedRide = await CarpoolPost.findOne({
+        _id: { $ne: post._id },
+        driver_id: post.driver_id,
+        status: 'in_progress'
+      }).select('_id').lean();
+
+      if (ongoingHostedRide) {
+        return res.status(409).json({
+          code: 'ONE_ONGOING_RIDE_ONLY',
+          message: 'You can only have one ongoing ride at a time.'
+        });
+      }
     }
 
     const activeBookings = await Booking.find({

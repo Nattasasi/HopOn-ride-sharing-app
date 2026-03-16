@@ -15,6 +15,10 @@ object SessionManager {
     private const val KEY_TOKEN = "auth_token"
     private const val KEY_REFRESH_TOKEN = "refresh_token"
     private const val KEY_DISPLAY_NAME = "display_name"
+    private const val KEY_DEFAULT_VEHICLE_PLATE = "default_vehicle_plate"
+    private const val KEY_DEFAULT_VEHICLE_NAME = "default_vehicle_name"
+    private const val KEY_DEFAULT_VEHICLE_COLOR = "default_vehicle_color"
+    private const val KEY_DEFAULT_CONTACT_INFO = "default_contact_info"
     private const val KEY_PUSH_TOKEN = "push_token"
     private const val KEY_PENDING_PUSH_TOKEN = "pending_push_token"
     private const val KEY_SECURE_MIGRATED = "secure_migrated"
@@ -84,6 +88,30 @@ object SessionManager {
         if (legacy.contains(KEY_DISPLAY_NAME)) {
             secureEditor.putString(KEY_DISPLAY_NAME, legacy.getString(KEY_DISPLAY_NAME, null))
         }
+        if (legacy.contains(KEY_DEFAULT_VEHICLE_PLATE)) {
+            secureEditor.putString(
+                KEY_DEFAULT_VEHICLE_PLATE,
+                legacy.getString(KEY_DEFAULT_VEHICLE_PLATE, null)
+            )
+        }
+        if (legacy.contains(KEY_DEFAULT_VEHICLE_NAME)) {
+            secureEditor.putString(
+                KEY_DEFAULT_VEHICLE_NAME,
+                legacy.getString(KEY_DEFAULT_VEHICLE_NAME, null)
+            )
+        }
+        if (legacy.contains(KEY_DEFAULT_VEHICLE_COLOR)) {
+            secureEditor.putString(
+                KEY_DEFAULT_VEHICLE_COLOR,
+                legacy.getString(KEY_DEFAULT_VEHICLE_COLOR, null)
+            )
+        }
+        if (legacy.contains(KEY_DEFAULT_CONTACT_INFO)) {
+            secureEditor.putString(
+                KEY_DEFAULT_CONTACT_INFO,
+                legacy.getString(KEY_DEFAULT_CONTACT_INFO, null)
+            )
+        }
         if (legacy.contains(KEY_PUSH_TOKEN)) {
             secureEditor.putString(KEY_PUSH_TOKEN, legacy.getString(KEY_PUSH_TOKEN, null))
         }
@@ -112,6 +140,10 @@ object SessionManager {
                     remove(KEY_TOKEN)
                     remove(KEY_REFRESH_TOKEN)
                     remove(KEY_DISPLAY_NAME)
+                    remove(KEY_DEFAULT_VEHICLE_PLATE)
+                    remove(KEY_DEFAULT_VEHICLE_NAME)
+                    remove(KEY_DEFAULT_VEHICLE_COLOR)
+                    remove(KEY_DEFAULT_CONTACT_INFO)
                     remove(KEY_PENDING_PUSH_TOKEN)
                 }
             }
@@ -156,6 +188,46 @@ object SessionManager {
     fun setDisplayName(context: Context, name: String) {
         val preferences = preferences(context)
         preferences.edit().putString(KEY_DISPLAY_NAME, name).apply()
+    }
+
+    fun getDefaultVehiclePlate(context: Context): String? {
+        val preferences = preferences(context)
+        return preferences.getString(KEY_DEFAULT_VEHICLE_PLATE, null)
+    }
+
+    fun setDefaultVehiclePlate(context: Context, plate: String) {
+        val preferences = preferences(context)
+        preferences.edit().putString(KEY_DEFAULT_VEHICLE_PLATE, plate).apply()
+    }
+
+    fun getDefaultVehicleName(context: Context): String? {
+        val preferences = preferences(context)
+        return preferences.getString(KEY_DEFAULT_VEHICLE_NAME, null)
+    }
+
+    fun setDefaultVehicleName(context: Context, name: String) {
+        val preferences = preferences(context)
+        preferences.edit().putString(KEY_DEFAULT_VEHICLE_NAME, name).apply()
+    }
+
+    fun getDefaultVehicleColor(context: Context): String? {
+        val preferences = preferences(context)
+        return preferences.getString(KEY_DEFAULT_VEHICLE_COLOR, null)
+    }
+
+    fun setDefaultVehicleColor(context: Context, color: String) {
+        val preferences = preferences(context)
+        preferences.edit().putString(KEY_DEFAULT_VEHICLE_COLOR, color).apply()
+    }
+
+    fun getDefaultContactInfo(context: Context): String? {
+        val preferences = preferences(context)
+        return preferences.getString(KEY_DEFAULT_CONTACT_INFO, null)
+    }
+
+    fun setDefaultContactInfo(context: Context, contactInfo: String) {
+        val preferences = preferences(context)
+        preferences.edit().putString(KEY_DEFAULT_CONTACT_INFO, contactInfo).apply()
     }
 
     fun getPushToken(context: Context): String? {

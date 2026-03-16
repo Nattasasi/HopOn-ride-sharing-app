@@ -55,6 +55,11 @@
             android:theme="@style/AppTheme" />
 
         <activity
+            android:name=".ui.rideDiscovery.screen.VehicleSettingsActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <activity
             android:name=".ui.rideDiscovery.screen.RootHostActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustNothing"
