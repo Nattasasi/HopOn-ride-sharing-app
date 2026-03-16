@@ -2,6 +2,11 @@ local.properties
 .github/copilot-instructions.md
 .env
 
+# Local editor / OS files
+.DS_Store
+.vscode/
+.kotlin/errors/
+
 # Environment and secrets
 .env.*
 !.env.example
