@@ -2,7 +2,7 @@
 
 HopOn is a real-time ride-sharing app with:
 - Android client (`/app`)
-- Node.js + Express API (`/backend/api`)
+- Node.js + Express API (`/backend/api`, with dependencies/scripts defined in `/backend/package.json`)
 - Admin web panel (`/backend/web`)
 
 ## Core Ride Flow
@@ -21,7 +21,7 @@ HopOn is a real-time ride-sharing app with:
 
 - Reports (ongoing/completed ride stages)
 - Identity verification request/review flow (user + admin)
-- Vehicle plate privacy (exposed only to host/confirmed passengers)
+- Vehicle plate currently visible in ride details
 - Routes/Rides page with state tabs:
   - Ongoing, Upcoming, Completed, Cancelled
 - One-active-ride constraints:
@@ -65,9 +65,9 @@ routesApiKey=YOUR_ROUTES_KEY
 ### 3) Run backend API
 
 ```bash
-cd backend/api
+cd backend
 npm install
-npm run dev
+node api/app.js
 ```
 
 ### 4) Run Android app
