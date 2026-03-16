@@ -16,6 +16,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { AdminTablePageSkeleton } from '@/app/components/PageSkeletons';
+import { formatLocationLabel } from '@/lib/locationLabel';
 
 const PAGE_SIZE = 10;
 
@@ -59,8 +60,13 @@ export default function AdminPostsPage() {
     if (!query) return posts ?? [];
 
     return (posts ?? []).filter((post: any) => {
-      const rowContent = [
+      const startLabel = formatLocationLabel(
         post.start_location_name,
+        post.start_lat,
+        post.start_lng
+      );
+      const rowContent = [
+        startLabel,
         post.end_location_name,
         `${post.driver_id?.first_name ?? ''} ${post.driver_id?.last_name ?? ''}`.trim(),
         post.driver_id?.email,
@@ -157,7 +163,13 @@ export default function AdminPostsPage() {
                 <TableRow key={post._id}>
                   <TableCell>
                     <div className="text-sm">
-                      <div className="font-medium">{post.start_location_name}</div>
+                      <div className="font-medium">
+                        {formatLocationLabel(
+                          post.start_location_name,
+                          post.start_lat,
+                          post.start_lng
+                        )}
+                      </div>
                       <div className="text-gray-500">to {post.end_location_name}</div>
                     </div>
                   </TableCell>

@@ -1,6 +1,11 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
 const { incrementCounter } = require('./metrics');
+
+const hashToken = (token) => {
+  return crypto.createHash('sha256').update(token).digest('hex');
+};
 
 const authMiddleware = async (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -11,7 +16,7 @@ const authMiddleware = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('_id role password_changed_at');
+    const user = await User.findById(decoded.id).select('_id role password_changed_at token_version');
     if (!user) {
       return res.status(401).json({ message: 'Authentication required' });
     }
@@ -22,6 +27,11 @@ const authMiddleware = async (req, res, next) => {
       : 0;
 
     if (passwordChangedAtSec && tokenIssuedAt && tokenIssuedAt < passwordChangedAtSec) {
+      return res.status(401).json({ message: 'Session expired. Please login again.' });
+    }
+
+    const tokenVersion = Number(decoded.tv ?? 0);
+    if ((user.token_version || 0) !== tokenVersion) {
       return res.status(401).json({ message: 'Session expired. Please login again.' });
     }
 
@@ -51,7 +61,8 @@ const refreshTokenMiddleware = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    const user = await User.findById(decoded.id).select('_id role password_changed_at');
+    const user = await User.findById(decoded.id)
+      .select('_id role password_changed_at token_version refresh_token_hash');
     if (!user) {
       incrementCounter('authRefreshFailures');
       console.warn(JSON.stringify({
@@ -69,6 +80,18 @@ const refreshTokenMiddleware = async (req, res, next) => {
     if (passwordChangedAtSec && tokenIssuedAt && tokenIssuedAt < passwordChangedAtSec) {
       incrementCounter('authRefreshFailures');
       return res.status(401).json({ message: 'Session expired. Please login again.' });
+    }
+
+    const tokenVersion = Number(decoded.tv ?? 0);
+    if ((user.token_version || 0) !== tokenVersion) {
+      incrementCounter('authRefreshFailures');
+      return res.status(401).json({ message: 'Session expired. Please login again.' });
+    }
+
+    const incomingTokenHash = hashToken(refreshToken);
+    if (!user.refresh_token_hash || user.refresh_token_hash !== incomingTokenHash) {
+      incrementCounter('authRefreshFailures');
+      return res.status(401).json({ message: 'Invalid or expired refresh token' });
     }
 
     req.user = { id: user._id.toString(), role: user.role };

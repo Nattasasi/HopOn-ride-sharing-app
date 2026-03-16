@@ -142,7 +142,7 @@ fun rideResultCard(
                         )
                     },
                     text = meetupDate,
-                    modifier = Modifier.weight(0.9f)
+                    modifier = Modifier.weight(1.1f)
                 )
                 infoCell(
                     icon = {
@@ -204,7 +204,6 @@ fun rideResultCard(
                         text = stringResource(id = R.string.people_ratio_format, peopleCount, maxPeopleCount)
                     )
                 }
-                hostVerificationStatusBadge(hostVerificationStatus)
             }
         }
     }
@@ -297,6 +296,7 @@ private fun infoCell(
             style = MaterialTheme.typography.titleMedium,
             color = Color.DarkGray,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(start = 4.dp)
         )

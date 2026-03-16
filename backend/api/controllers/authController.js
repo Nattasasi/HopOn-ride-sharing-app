@@ -7,6 +7,29 @@ const { body, validationResult } = require('express-validator');
 
 const PASSWORD_RESET_TOKEN_EXPIRY_MS = Number(process.env.PASSWORD_RESET_TOKEN_EXPIRY_MS || 15 * 60 * 1000);
 
+const hashToken = (token) => {
+  return crypto.createHash('sha256').update(token).digest('hex');
+};
+
+const issueSessionTokens = ({ userId, role, tokenVersion }) => {
+  const token = jwt.sign(
+    { id: userId, role, tv: tokenVersion },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+  const refreshToken = jwt.sign(
+    { id: userId, tv: tokenVersion },
+    process.env.JWT_REFRESH_SECRET,
+    { expiresIn: '7d' }
+  );
+  return { token, refreshToken };
+};
+
+const persistRefreshTokenHash = async (user, refreshToken) => {
+  user.refresh_token_hash = hashToken(refreshToken);
+  await user.save();
+};
+
 // Register
 const register = [
   body('first_name').notEmpty(),
@@ -37,8 +60,12 @@ const register = [
     });
     await user.save();
 
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+    const { token, refreshToken } = issueSessionTokens({
+      userId: user._id,
+      role: user.role,
+      tokenVersion: user.token_version || 0
+    });
+    await persistRefreshTokenHash(user, refreshToken);
 
     res.status(201).json({ userId: user._id, token, refreshToken });
   }
@@ -52,8 +79,12 @@ const login = async (req, res) => {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
 
-  const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-  const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+  const { token, refreshToken } = issueSessionTokens({
+    userId: user._id,
+    role: user.role,
+    tokenVersion: user.token_version || 0
+  });
+  await persistRefreshTokenHash(user, refreshToken);
 
   res.json({ userId: user._id, token, refreshToken });
 };
@@ -65,9 +96,20 @@ const verify = async (req, res) => {
 };
 
 // Refresh token
-const refresh = (req, res) => {
-  const token = jwt.sign({ id: req.user.id, role: req.user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-  res.json({ token });
+const refresh = async (req, res) => {
+  const user = await User.findById(req.user.id).select('_id role token_version refresh_token_hash');
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid refresh token user' });
+  }
+
+  const { token, refreshToken } = issueSessionTokens({
+    userId: user._id,
+    role: user.role,
+    tokenVersion: user.token_version || 0
+  });
+  await persistRefreshTokenHash(user, refreshToken);
+
+  res.json({ token, refreshToken });
 };
 
 const forgotPassword = [
@@ -129,6 +171,8 @@ const resetPassword = [
     user.password_reset_token_hash = null;
     user.password_reset_expires_at = null;
     user.password_changed_at = new Date();
+    user.refresh_token_hash = null;
+    user.token_version = (user.token_version || 0) + 1;
     await user.save();
 
     return res.json({ message: 'Password updated successfully' });

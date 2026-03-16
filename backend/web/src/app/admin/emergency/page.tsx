@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import axios, { SOCKET_BASE_URL } from '@/lib/axios';
 import { Button } from '@/components/ui/button';
+import { formatRouteLabel } from '@/lib/locationLabel';
 
 const socket = io(SOCKET_BASE_URL);
 
@@ -68,9 +69,13 @@ export default function Emergency() {
           .filter(Boolean)
           .join(' ')
           .trim();
-        const routeLabel = [a.post_id?.start_location_name, a.post_id?.end_location_name]
-          .filter(Boolean)
-          .join(' to ');
+        const routeLabel = formatRouteLabel(
+          a.post_id?.start_location_name,
+          a.post_id?.end_location_name,
+          a.lat,
+          a.lng,
+          a.post_id?.post_id || 'Unknown ride'
+        );
 
         return (
           <div key={a.alert_id} className="rounded-md border border-red-200 bg-red-50 p-4 space-y-2">
@@ -81,7 +86,7 @@ export default function Emergency() {
               Reporter: {reporterName || a.reporter_id?.email || 'Unknown'}
             </div>
             <div className="text-sm text-gray-800">
-              Ride: {routeLabel || a.post_id?.post_id || 'Unknown ride'}
+              Ride: {routeLabel}
             </div>
             <div className="text-sm text-gray-800">
               Location: {a.lat ?? '-'}, {a.lng ?? '-'}

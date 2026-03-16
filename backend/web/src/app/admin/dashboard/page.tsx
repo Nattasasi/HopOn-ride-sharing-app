@@ -7,6 +7,7 @@ import axios, { SOCKET_BASE_URL } from '@/lib/axios';
 import { Card } from '@/components/ui/card';
 import { DashboardPageSkeleton } from '@/app/components/PageSkeletons';
 import { Button } from '@/components/ui/button';
+import { formatRouteLabel } from '@/lib/locationLabel';
 
 const socket = io(SOCKET_BASE_URL);
 
@@ -108,9 +109,13 @@ export default function DashboardPage() {
                 <div key={a.alert_id || `${a.lat}-${a.lng}-${a.created_at}`} className="p-3 bg-red-50 border border-red-100 rounded-md text-sm text-red-700">
                   <div className="font-semibold">Emergency Alert</div>
                   <div>
-                    {(a.post_id?.start_location_name && a.post_id?.end_location_name)
-                      ? `${a.post_id.start_location_name} to ${a.post_id.end_location_name}`
-                      : (a.post_id?.post_id || 'Unknown ride')}
+                    {formatRouteLabel(
+                      a.post_id?.start_location_name,
+                      a.post_id?.end_location_name,
+                      a.lat,
+                      a.lng,
+                      a.post_id?.post_id || 'Unknown ride'
+                    )}
                   </div>
                   <div>
                     {a.lat}, {a.lng}

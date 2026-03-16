@@ -33,7 +33,8 @@ data class ApiRefreshRequest(
 )
 
 data class ApiRefreshResponse(
-    val token: String
+    val token: String,
+    val refreshToken: String? = null
 )
 
 // ─── User ─────────────────────────────────────────────────────────────────────

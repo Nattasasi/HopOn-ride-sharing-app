@@ -23,4 +23,9 @@ const bookingSchema = new mongoose.Schema({
   booked_at: { type: Date, default: Date.now }
 });
 
+// Fast paths: user history/active booking checks, host post booking lists, and recent booking lookups.
+bookingSchema.index({ passenger_id: 1, status: 1, booked_at: -1 });
+bookingSchema.index({ post_id: 1, status: 1, booked_at: -1 });
+bookingSchema.index({ post_id: 1, passenger_id: 1, status: 1 });
+
 module.exports = mongoose.model('Booking', bookingSchema);

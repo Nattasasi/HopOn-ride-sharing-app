@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -110,16 +111,14 @@ fun rideInProcessScreen(
     val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
     val mapMinHeight = screenHeight * RideMapMinHeightRatio
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.White)
-            .padding(start = 16.dp, top = 16.dp, end = 16.dp)
+    Box(
+        modifier = Modifier.fillMaxSize()
     ) {
         Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+                .fillMaxSize()
+                .background(Color.White)
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Top
         ) {
@@ -206,15 +205,17 @@ fun rideInProcessScreen(
                 )
             }
 
-            waitTimerLabel?.takeIf { it.isNotBlank() }?.let { info ->
-                Text(
-                    text = info,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.DarkGray,
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .fillMaxWidth()
-                )
+            if (isDriverView) {
+                waitTimerLabel?.takeIf { it.isNotBlank() }?.let { info ->
+                    Text(
+                        text = info,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.DarkGray,
+                        modifier = Modifier
+                            .padding(top = 12.dp)
+                            .fillMaxWidth()
+                    )
+                }
             }
 
             if (isDriverView && driverPassengerBookings.isNotEmpty()) {
@@ -280,13 +281,17 @@ fun rideInProcessScreen(
                         .fillMaxWidth()
                 )
             }
+
+            Spacer(modifier = Modifier.height(200.dp))
         }
 
+        // Action buttons overlay at bottom, transparent background
         Column(
             modifier = Modifier
+                .align(androidx.compose.ui.Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(top = 12.dp, bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(start = 16.dp, end = 16.dp, bottom = 8.dp, top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -417,17 +422,10 @@ private fun rideStartChecklistCard(
                 fontWeight = FontWeight.SemiBold,
                 color = Color.Black
             )
-            summary?.takeIf { it.isNotBlank() }?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Black
-                )
-            }
-            blockers.forEach { blocker ->
+            blockers.firstOrNull()?.let { blocker ->
                 Text(
                     text = blocker,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = Color.Black
                 )
             }

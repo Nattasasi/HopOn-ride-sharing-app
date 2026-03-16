@@ -50,6 +50,11 @@ const setStoredAccessToken = (token: string) => {
   localStorage.setItem('token', token);
 };
 
+const setStoredRefreshToken = (token: string) => {
+  if (!isBrowser()) return;
+  localStorage.setItem('refreshToken', token);
+};
+
 const clearStoredAuth = () => {
   if (!isBrowser()) return;
   localStorage.removeItem('token');
@@ -97,7 +102,12 @@ const refreshAccessToken = async (): Promise<string> => {
     throw new Error('Refresh endpoint did not return an access token');
   }
 
+  const newRefreshToken = response?.data?.refreshToken;
+
   setStoredAccessToken(newToken);
+  if (typeof newRefreshToken === 'string' && newRefreshToken.trim().length > 0) {
+    setStoredRefreshToken(newRefreshToken);
+  }
   return newToken;
 };
 

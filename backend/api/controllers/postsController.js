@@ -5,6 +5,10 @@ const Booking = require('../models/Booking');
 const Feedback = require('../models/Feedback');
 const { body, validationResult } = require('express-validator');
 const { sendToUsers } = require('../services/pushNotifications');
+const {
+  shouldUseCursorPagination,
+  paginateFindQuery
+} = require('../utils/pagination');
 
 const ACTIVE_HOST_RIDE_STATUSES = ['active', 'in_progress'];
 const CANCEL_CUTOFF_MINUTES = 30;
@@ -13,6 +17,11 @@ const PICKUP_STATUS_LEFT_BEHIND = 'left_behind';
 const VERIFIED_STATUSES = ['verified'];
 const CONFIRMED_LIKE_BOOKING_STATUSES = ['confirmed', 'accepted'];
 const ACTIVE_BOOKING_STATUSES = ['pending', 'accepted', 'confirmed'];
+const GENERIC_START_LOCATION_LABELS = new Set([
+  'current location',
+  'your live location',
+  'choose meetup location'
+]);
 
 const toIdString = (value) => {
   if (!value) return '';
@@ -43,6 +52,17 @@ const hasPassedCancellationCutoff = (departureTime) => {
   if (Number.isNaN(departureEpoch)) return false;
   const cutoffEpoch = departureEpoch - (CANCEL_CUTOFF_MINUTES * 60 * 1000);
   return Date.now() > cutoffEpoch;
+};
+
+const sanitizeStartLocationName = (rawLabel, startLat, startLng) => {
+  const trimmed = typeof rawLabel === 'string' ? rawLabel.trim() : '';
+  const normalized = trimmed.toLowerCase();
+  const shouldReplace = !trimmed || GENERIC_START_LOCATION_LABELS.has(normalized);
+  if (!shouldReplace) return trimmed;
+
+  const hasCoordinates = Number.isFinite(startLat) && Number.isFinite(startLng);
+  if (!hasCoordinates) return 'Live location';
+  return `Live location (${startLat.toFixed(5)}, ${startLng.toFixed(5)})`;
 };
 
 const buildRideStatusNotification = (status) => {
@@ -157,9 +177,11 @@ const buildRideStartChecklist = (post, activeBookings, nowEpoch = Date.now()) =>
 const getPosts = async (req, res) => {
   try {
     const { lat, lng, radius } = req.query;
+    const shouldPaginate = shouldUseCursorPagination(req.query);
     console.log('getPosts received query:', { lat, lng, radius }); // Log received query params
 
     let posts;
+    let pageResult = null;
 
     const DEFAULT_RADIUS_KM = 5;
     if (lat && lng) {
@@ -224,9 +246,21 @@ const getPosts = async (req, res) => {
       console.log('Geo search results:', posts); // Log results of geo search
     } else {
       console.log('Fetching all posts.');
-      posts = await CarpoolPost.find(buildUpcomingJoinableFilter())
-        .populate('driver_id', 'first_name last_name average_rating is_verified verification_status') // Populate all fields needed by app
-        .sort({ departure_time: -1 }); // Sort by newest first
+      if (shouldPaginate) {
+        pageResult = await paginateFindQuery({
+          model: CarpoolPost,
+          query: buildUpcomingJoinableFilter(),
+          cursor: req.query.cursor,
+          limit: req.query.limit,
+          sort: { _id: -1 },
+          populate: 'driver_id first_name last_name average_rating is_verified verification_status'
+        });
+        posts = pageResult.items;
+      } else {
+        posts = await CarpoolPost.find(buildUpcomingJoinableFilter())
+          .populate('driver_id', 'first_name last_name average_rating is_verified verification_status') // Populate all fields needed by app
+          .sort({ departure_time: -1 }); // Sort by newest first
+      }
       console.log('All posts results:', posts); // Log results of all posts
     }
 
@@ -241,6 +275,18 @@ const getPosts = async (req, res) => {
       }
       return item;
     });
+
+    if (shouldPaginate && !(lat && lng)) {
+      const limitValue = Number(req.query.limit);
+      return res.json({
+        items: posts,
+        page: pageResult?.page || {
+          limit: Number.isFinite(limitValue) && limitValue > 0 ? Math.min(100, Math.floor(limitValue)) : 20,
+          has_more: false,
+          next_cursor: null
+        }
+      });
+    }
 
     res.json(posts);
   } catch (error) {
@@ -264,7 +310,22 @@ const createPost = [
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { start_lat, start_lng, end_lat, end_lng, total_seats, ...rest } = req.body;
+    const {
+      start_location_name,
+      start_lat,
+      start_lng,
+      end_lat,
+      end_lng,
+      total_seats,
+      ...rest
+    } = req.body;
+    const parsedStartLat = parseFloat(start_lat);
+    const parsedStartLng = parseFloat(start_lng);
+    const normalizedStartLocationName = sanitizeStartLocationName(
+      start_location_name,
+      parsedStartLat,
+      parsedStartLng
+    );
 
     const existingActiveHostedRide = await CarpoolPost.findOne({
       driver_id: req.user.id,
@@ -295,13 +356,14 @@ const createPost = [
       post_id: uuidv4(),
       driver_id: req.user.id,
       ...rest,
-      start_lat,
-      start_lng,
+      start_location_name: normalizedStartLocationName,
+      start_lat: parsedStartLat,
+      start_lng: parsedStartLng,
       end_lat,
       end_lng,
       location: {
         type: 'Point',
-        coordinates: [parseFloat(start_lng), parseFloat(start_lat)] // GeoJSON [longitude, latitude]
+        coordinates: [parsedStartLng, parsedStartLat] // GeoJSON [longitude, latitude]
       },
       end_location: {
         type: 'Point',
@@ -342,12 +404,24 @@ const getPost = async (req, res) => {
 
 const getMyPosts = async (req, res) => {
   try {
+    if (shouldUseCursorPagination(req.query)) {
+      const pageResult = await paginateFindQuery({
+        model: CarpoolPost,
+        query: { driver_id: req.user.id },
+        cursor: req.query.cursor,
+        limit: req.query.limit,
+        sort: { _id: -1 },
+        populate: 'driver_id first_name last_name average_rating is_verified verification_status'
+      });
+      return res.json(pageResult);
+    }
+
     const posts = await CarpoolPost.find({ driver_id: req.user.id })
       .populate('driver_id', 'first_name last_name average_rating is_verified verification_status')
       .sort({ departure_time: -1 });
-    res.json(posts);
+    return res.json(posts);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -395,12 +469,15 @@ const updatePostStatus = async (req, res) => {
   emitRideEventToUsers(req, participantUserIds, 'ride_status_changed', rideStatusPayload);
 
   if (status === 'cancelled') {
-    const confirmedBookings = await Booking.find({ post_id: post.post_id, status: 'confirmed' })
+    const activeBookings = await Booking.find({
+      post_id: post.post_id,
+      status: { $in: ['pending', 'accepted', 'confirmed'] }
+    })
       .select('passenger_id')
       .lean();
     const cancelledParticipantUserIds = [
       post.driver_id?.toString(),
-      ...confirmedBookings.map((item) => item.passenger_id?.toString())
+      ...activeBookings.map((item) => item.passenger_id?.toString())
     ];
     const payload = {
       post_id: post._id.toString(),

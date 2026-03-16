@@ -16,6 +16,7 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination';
 import { AdminTablePageSkeleton } from '@/app/components/PageSkeletons';
+import { formatRouteLabel } from '@/lib/locationLabel';
 
 const PAGE_SIZE = 10;
 
@@ -56,9 +57,15 @@ export default function AdminBookingsPage() {
     if (!query) return bookings ?? [];
 
     return (bookings ?? []).filter((booking: any) => {
-      const rowContent = [
+      const routeLabel = formatRouteLabel(
         booking.post?.start_location_name,
         booking.post?.end_location_name,
+        booking.post?.start_lat,
+        booking.post?.start_lng,
+        'Unknown ride'
+      );
+      const rowContent = [
+        routeLabel,
         `${booking.post?.driver_id?.first_name ?? ''} ${booking.post?.driver_id?.last_name ?? ''}`.trim(),
         booking.post?.driver_id?._id,
         `${booking.passenger_id?.first_name ?? ''} ${booking.passenger_id?.last_name ?? ''}`.trim(),
@@ -131,7 +138,15 @@ export default function AdminBookingsPage() {
                 <TableRow key={booking._id}>
                   <TableCell>
                     <div className="text-sm">
-                      <div className="font-medium">{booking.post?.start_location_name ?? '-'} → {booking.post?.end_location_name ?? '-'}</div>
+                      <div className="font-medium">
+                        {formatRouteLabel(
+                          booking.post?.start_location_name,
+                          booking.post?.end_location_name,
+                          booking.post?.start_lat,
+                          booking.post?.start_lng,
+                          'Unknown ride'
+                        )}
+                      </div>
                       <div className="text-gray-500">
                         Driver: {booking.post?.driver_id?.first_name ?? '-'} {booking.post?.driver_id?.last_name ?? ''}
                       </div>

@@ -18,5 +18,9 @@ const verificationRequestSchema = new mongoose.Schema({
   updated_at: { type: Date, default: Date.now }
 });
 
+// Common reads: latest request per user and review queue by status.
+verificationRequestSchema.index({ user_id: 1, created_at: -1 });
+verificationRequestSchema.index({ status: 1, created_at: -1 });
+
 module.exports = mongoose.model('VerificationRequest', verificationRequestSchema);
 

@@ -10,4 +10,8 @@ const emergencyAlertSchema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now }
 });
 
+// Admin queue reads unresolved alerts by recency; post-scoped history also appears in tooling.
+emergencyAlertSchema.index({ resolved: 1, created_at: -1 });
+emergencyAlertSchema.index({ post_id: 1, created_at: -1 });
+
 module.exports = mongoose.model('EmergencyAlert', emergencyAlertSchema);

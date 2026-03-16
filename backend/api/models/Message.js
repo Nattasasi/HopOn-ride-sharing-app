@@ -8,4 +8,8 @@ const messageSchema = new mongoose.Schema({
   sent_at: { type: Date, default: Date.now }
 });
 
+// Chat history is typically fetched by post and sorted by send time.
+messageSchema.index({ post_id: 1, sent_at: 1 });
+messageSchema.index({ post_id: 1, sent_at: -1 });
+
 module.exports = mongoose.model('Message', messageSchema);

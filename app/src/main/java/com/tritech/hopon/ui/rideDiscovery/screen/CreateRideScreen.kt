@@ -114,8 +114,10 @@ fun createRideScreen(
     val defaultVehicleInfo = stringResource(id = R.string.default_vehicle_info)
     val defaultContactInfo = stringResource(id = R.string.default_contact_info)
     val defaultWaitTime = stringResource(id = R.string.create_ride_default_wait_time)
-    val currentLocationFallback = stringResource(id = R.string.current_location)
-    val selectedPlaceFallback = stringResource(id = R.string.selected_place)
+    val currentLocationFallback = stringResource(id = R.string.current_location_unavailable)
+    val meetupSelectionError = stringResource(id = R.string.create_ride_select_meetup_error)
+    val destinationSelectionError = stringResource(id = R.string.create_ride_select_destination_error)
+    var createRideValidationMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
     var date by rememberSaveable { mutableStateOf("") }
     var time by rememberSaveable { mutableStateOf("") }
@@ -470,6 +472,15 @@ fun createRideScreen(
                     .height(136.dp)
             )
 
+            createRideValidationMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.height(96.dp))
         }
 
@@ -477,7 +488,7 @@ fun createRideScreen(
             text = stringResource(id = R.string.create_ride_action),
             onClick = {
                 val effectiveInitialMeetup = initialMeetupLocation.ifBlank { currentLocationFallback }
-                val effectiveInitialDestination = initialDestination.ifBlank { selectedPlaceFallback }
+                val effectiveInitialDestination = initialDestination.ifBlank { "" }
                 val normalizedMeetup = meetupLocation.trim().ifEmpty { effectiveInitialMeetup }
                 val normalizedDestination = destination.trim().ifEmpty { effectiveInitialDestination }
                 val resolvedMeetupLatLng = if (meetupLocation.trim().isEmpty()) {
@@ -497,6 +508,18 @@ fun createRideScreen(
                 val normalizedVehicleInfo = vehicleInfo.trim().ifEmpty { defaultVehicleInfo }
                 val normalizedContactInfo = contactInfo.trim().ifEmpty { defaultContactInfo }
                 val normalizedNotes = notes.trim()
+
+                if (resolvedMeetupLatLng == null || normalizedMeetup == currentLocationFallback) {
+                    createRideValidationMessage = meetupSelectionError
+                    return@hopOnButton
+                }
+
+                if (resolvedDestinationLatLng == null || normalizedDestination.isBlank()) {
+                    createRideValidationMessage = destinationSelectionError
+                    return@hopOnButton
+                }
+
+                createRideValidationMessage = null
 
                 val parsedPrice = pricePerSeat.trim().toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0
                 onCreateRideClick(

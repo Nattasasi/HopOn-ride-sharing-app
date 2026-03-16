@@ -4,15 +4,30 @@ const EmergencyAlert = require('../models/EmergencyAlert');
 const Booking = require('../models/Booking');
 const VerificationRequest = require('../models/VerificationRequest');
 const mongoose = require('mongoose');
+const {
+  shouldUseCursorPagination,
+  paginateFindQuery
+} = require('../utils/pagination');
 
 const getUsers = async (req, res) => {
   try {
     const { search } = req.query;
     const query = search ? { $or: [{ first_name: new RegExp(search, 'i') }, { email: new RegExp(search, 'i') }] } : {};
+    if (shouldUseCursorPagination(req.query)) {
+      const pageResult = await paginateFindQuery({
+        model: User,
+        query,
+        cursor: req.query.cursor,
+        limit: req.query.limit,
+        sort: { _id: -1 }
+      });
+      return res.json(pageResult);
+    }
+
     const users = await User.find(query).sort({ created_at: -1 });
-    res.json(users);
+    return res.json(users);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching users', error: error.message });
+    return res.status(500).json({ message: 'Error fetching users', error: error.message });
   }
 };
 
@@ -31,14 +46,26 @@ const getPosts = async (req, res) => {
   try {
     const { status } = req.query;
     const query = (status && status.trim() !== "") ? { status } : {};
+
+    if (shouldUseCursorPagination(req.query)) {
+      const pageResult = await paginateFindQuery({
+        model: CarpoolPost,
+        query,
+        cursor: req.query.cursor,
+        limit: req.query.limit,
+        sort: { _id: -1 },
+        populate: 'driver_id first_name last_name email'
+      });
+      return res.json(pageResult);
+    }
     
     const posts = await CarpoolPost.find(query)
       .populate('driver_id', 'first_name last_name email')
       .sort({ created_at: -1 });
       
-    res.json(posts);
+    return res.json(posts);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching posts', error: error.message });
+    return res.status(500).json({ message: 'Error fetching posts', error: error.message });
   }
 };
 
@@ -55,13 +82,42 @@ const deletePost = async (req, res) => {
 
 const getBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find()
-      .populate('passenger_id', 'first_name last_name email')
-      .sort({ booked_at: -1 });
+    const shouldPaginate = shouldUseCursorPagination(req.query);
+    const bookings = shouldPaginate
+      ? await Booking.find(
+          (() => {
+            const query = {};
+            const cursor = req.query.cursor;
+            if (cursor && mongoose.Types.ObjectId.isValid(String(cursor))) {
+              query._id = { $lt: new mongoose.Types.ObjectId(String(cursor)) };
+            }
+            return query;
+          })()
+        )
+          .populate('passenger_id', 'first_name last_name email')
+          .sort({ _id: -1 })
+          .limit((Number(req.query.limit) > 0 ? Math.min(100, Math.floor(Number(req.query.limit))) : 20) + 1)
+      : await Booking.find()
+          .populate('passenger_id', 'first_name last_name email')
+          .sort({ booked_at: -1 });
+
+    let page = null;
+    let effectiveBookings = bookings;
+    if (shouldPaginate) {
+      const parsedLimit = Number(req.query.limit);
+      const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(100, Math.floor(parsedLimit)) : 20;
+      const hasMore = bookings.length > limit;
+      effectiveBookings = hasMore ? bookings.slice(0, limit) : bookings;
+      page = {
+        limit,
+        has_more: hasMore,
+        next_cursor: hasMore ? effectiveBookings[effectiveBookings.length - 1]?._id?.toString() || null : null
+      };
+    }
 
     const postPublicIds = [];
     const postMongoIds = [];
-    for (const booking of bookings) {
+    for (const booking of effectiveBookings) {
       const value = booking.post_id;
       if (typeof value !== 'string' || value.trim() === '') continue;
       if (mongoose.Types.ObjectId.isValid(value)) {
@@ -83,15 +139,19 @@ const getBookings = async (req, res) => {
 
     const postByPublicId = new Map(posts.map((post) => [post.post_id, post]));
     const postByMongoId = new Map(posts.map((post) => [post._id.toString(), post]));
-    const hydrated = bookings.map((booking) => {
+    const hydrated = effectiveBookings.map((booking) => {
       const plain = booking.toObject();
       plain.post = postByPublicId.get(plain.post_id) || postByMongoId.get(plain.post_id) || null;
       return plain;
     });
 
-    res.json(hydrated);
+    if (shouldPaginate) {
+      return res.json({ items: hydrated, page });
+    }
+
+    return res.json(hydrated);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching bookings', error: error.message });
+    return res.status(500).json({ message: 'Error fetching bookings', error: error.message });
   }
 };
 
@@ -126,13 +186,31 @@ const getVerifications = async (req, res) => {
       query.status = status.trim();
     }
 
+    if (shouldUseCursorPagination(req.query)) {
+      const pageResult = await paginateFindQuery({
+        model: VerificationRequest,
+        query,
+        cursor: req.query.cursor,
+        limit: req.query.limit,
+        sort: { _id: -1 },
+        populate: [
+          'user_id first_name last_name email role is_verified verification_status verification_type verification_doc_url verified_at',
+          'reviewed_by first_name last_name email role'
+        ],
+        lean: false
+      });
+
+      const serialized = pageResult.items.map((item) => item.toObject());
+      return res.json({ items: serialized, page: pageResult.page });
+    }
+
     const requests = await VerificationRequest.find(query)
       .populate('user_id', 'first_name last_name email role is_verified verification_status verification_type verification_doc_url verified_at')
       .populate('reviewed_by', 'first_name last_name email role')
       .sort({ created_at: -1 });
-    res.json(requests);
+    return res.json(requests);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching verifications', error: error.message });
+    return res.status(500).json({ message: 'Error fetching verifications', error: error.message });
   }
 };
 

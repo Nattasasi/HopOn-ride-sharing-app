@@ -88,10 +88,16 @@ object ApiClient {
                     if (!call.isSuccessful) return null
 
                     val body = call.body?.string() ?: return null
-                    val newToken = org.json.JSONObject(body).optString("token")
+                    val payload = org.json.JSONObject(body)
+                    val newToken = payload.optString("token")
                         .takeIf { it.isNotBlank() } ?: return null
+                    val newRefreshToken = payload.optString("refreshToken")
+                        .takeIf { it.isNotBlank() }
 
                     SessionManager.setToken(appContext, newToken)
+                    if (newRefreshToken != null) {
+                        SessionManager.setRefreshToken(appContext, newRefreshToken)
+                    }
 
                     response.request.newBuilder()
                         .header("Authorization", "Bearer $newToken")

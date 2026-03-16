@@ -3,7 +3,7 @@
  *
  * Usage:
  *   node seed.js            — inserts seed data (skips existing emails)
- *   node seed.js --fresh    — drops carpoolposts + test users first, then inserts
+ *   node seed.js --fresh    — clears ride-related collections + test users first, then inserts
  *
  * Test accounts created:
  *   driver@hopon.test  / password123
@@ -16,6 +16,14 @@ const { v4: uuidv4 } = require('uuid');
 
 const User = require('./models/User');
 const CarpoolPost = require('./models/CarpoolPost');
+const Booking = require('./models/Booking');
+const Message = require('./models/Message');
+const EmergencyAlert = require('./models/EmergencyAlert');
+const VerificationRequest = require('./models/VerificationRequest');
+const Payment = require('./models/Payment');
+const Feedback = require('./models/Feedback');
+const Report = require('./models/Report');
+const RidesTracking = require('./models/RidesTracking');
 
 const FRESH = process.argv.includes('--fresh');
 
@@ -122,10 +130,20 @@ async function run() {
   console.log('Connected.');
 
   if (FRESH) {
-    console.log('--fresh: dropping existing carpoolposts and test users…');
+    console.log('--fresh: clearing ride-related collections and test users…');
+    await Promise.all([
+      Booking.deleteMany({}),
+      Message.deleteMany({}),
+      EmergencyAlert.deleteMany({}),
+      VerificationRequest.deleteMany({}),
+      Payment.deleteMany({}),
+      Feedback.deleteMany({}),
+      Report.deleteMany({}),
+      RidesTracking.deleteMany({}),
+    ]);
     await CarpoolPost.deleteMany({});
     await User.deleteMany({ email: { $in: TEST_USERS.map(u => u.email) } });
-    console.log('Dropped.');
+    console.log('Cleared.');
   }
 
   // ── Upsert test users ──────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import com.tritech.hopon.utils.SessionManager
 import io.socket.client.IO
 import io.socket.client.Socket
 import org.json.JSONObject
+import java.util.ArrayDeque
 
 /**
  * Manages a Socket.IO connection for real-time group chat in a carpool post.
@@ -20,6 +21,11 @@ import org.json.JSONObject
  * 4. Call [disconnect] when leaving the chat screen.
  */
 class ChatSocketManager(private val context: Context) {
+
+    private data class OutboundChatMessage(
+        val localId: String,
+        val body: String
+    )
 
     enum class ConnectionState {
         CONNECTING,
@@ -33,6 +39,7 @@ class ChatSocketManager(private val context: Context) {
         private const val EVENT_JOIN_POST = "join_post"
         private const val EVENT_SEND_MESSAGE = "send_message"
         private const val EVENT_NEW_MESSAGE = "new_message"
+        private const val MAX_PENDING_MESSAGES = 100
     }
 
     private var socket: Socket? = null
@@ -40,6 +47,43 @@ class ChatSocketManager(private val context: Context) {
     private var hasConnectedOnce = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val gson = Gson()
+    private val pendingOutboundMessages = ArrayDeque<OutboundChatMessage>()
+
+    private fun enqueueMessage(localId: String, body: String) {
+        pendingOutboundMessages.removeAll { it.localId == localId }
+        pendingOutboundMessages.addLast(OutboundChatMessage(localId = localId, body = body))
+        while (pendingOutboundMessages.size > MAX_PENDING_MESSAGES) {
+            pendingOutboundMessages.removeFirst()
+        }
+    }
+
+    private fun emitMessage(body: String): Boolean {
+        val postId = currentPostId ?: return false
+        val s = socket ?: return false
+        if (!s.connected()) return false
+
+        val data = JSONObject().apply {
+            put("post_id", postId)
+            put("body", body)
+        }
+        s.emit(EVENT_SEND_MESSAGE, data)
+        return true
+    }
+
+    private fun flushPendingMessages() {
+        if (pendingOutboundMessages.isEmpty()) return
+
+        val iterator = pendingOutboundMessages.iterator()
+        while (iterator.hasNext()) {
+            val pending = iterator.next()
+            val sent = emitMessage(pending.body)
+            if (sent) {
+                iterator.remove()
+            } else {
+                break
+            }
+        }
+    }
 
     /**
      * Connects to the Socket.IO server and joins the room for [postId].
@@ -85,6 +129,8 @@ class ChatSocketManager(private val context: Context) {
                 put("post_id", postId)
             }
             s.emit(EVENT_JOIN_POST, joinData)
+            // Give the server a brief moment to process room join before sending queued messages.
+            mainHandler.postDelayed({ flushPendingMessages() }, 250)
             mainHandler.post {
                 onConnectionStateChanged(ConnectionState.CONNECTED)
                 if (hasConnectedOnce) {
@@ -126,18 +172,17 @@ class ChatSocketManager(private val context: Context) {
      *
      * @param body  The message text.
      */
-    fun sendMessage(body: String): Boolean {
-        val postId = currentPostId ?: return false
-        val s = socket ?: return false
-        if (!s.connected()) {
-            Log.w(TAG, "Socket not connected, cannot send message")
-            return false
+    fun sendMessage(localId: String, body: String): Boolean {
+        if (currentPostId == null) return false
+
+        val sentNow = emitMessage(body)
+        if (sentNow) {
+            pendingOutboundMessages.removeAll { it.localId == localId }
+            return true
         }
-        val data = JSONObject().apply {
-            put("post_id", postId)
-            put("body", body)
-        }
-        s.emit(EVENT_SEND_MESSAGE, data)
+
+        enqueueMessage(localId = localId, body = body)
+        Log.w(TAG, "Socket not connected, queued message for resend")
         return true
     }
 
@@ -147,6 +192,7 @@ class ChatSocketManager(private val context: Context) {
         socket?.disconnect()
         socket = null
         currentPostId = null
+        pendingOutboundMessages.clear()
     }
 
     /** Returns true if currently connected. */

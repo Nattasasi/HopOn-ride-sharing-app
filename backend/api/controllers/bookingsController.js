@@ -1,9 +1,12 @@
 const { v4: uuidv4 } = require('uuid');
 const Booking = require('../models/Booking');
 const CarpoolPost = require('../models/CarpoolPost');
-const { validationResult } = require('express-validator');
 const { incrementCounter } = require('../middleware/metrics');
 const { sendToUsers } = require('../services/pushNotifications');
+const {
+  shouldUseCursorPagination,
+  paginateFindQuery
+} = require('../utils/pagination');
 
 const CANCEL_CUTOFF_MINUTES = 30;
 const BOOKING_REQUEST_SLA_MINUTES = Number(process.env.BOOKING_REQUEST_SLA_MINUTES || 10);
@@ -294,6 +297,7 @@ const requestBooking = async (req, res) => {
       },
       data: {
         type: 'booking_requested',
+        extra_notification_target: 'history',
         booking_id: booking._id.toString(),
         post_id: post._id.toString(),
         post_uuid: post.post_id,
@@ -385,11 +389,16 @@ const respondToBooking = async (req, res) => {
       userIds: [booking.passenger_id.toString()],
       excludeUserId: req.user.id,
       notification,
-      data: { type: 'booking_status_changed', ...statusPayload }
+      data: {
+        type: 'booking_status_changed',
+        extra_notification_target: 'history',
+        ...statusPayload
+      }
     }).catch((error) => console.error('Push notification failed:', error.message));
 
     res.json(booking);
   } catch (error) {
+    incrementCounter('bookingTransitionFailures');
     logBookingError(req, 'booking_status_transition_failed', error);
     res.status(500).json({ message: error.message });
   }
@@ -447,6 +456,7 @@ const markBookingArrived = async (req, res) => {
 
     res.json(booking);
   } catch (error) {
+    incrementCounter('bookingTransitionFailures');
     res.status(500).json({ message: error.message });
   }
 };
@@ -502,6 +512,7 @@ const confirmPassengerBoarded = async (req, res) => {
 
     res.json(booking);
   } catch (error) {
+    incrementCounter('bookingTransitionFailures');
     res.status(500).json({ message: error.message });
   }
 };
@@ -568,7 +579,11 @@ const cancelBooking = async (req, res) => {
       userIds: [booking.passenger_id.toString(), post.driver_id.toString()],
       excludeUserId: req.user.id,
       notification,
-      data: { type: 'booking_cancelled', ...cancelledPayload }
+      data: {
+        type: 'booking_cancelled',
+        extra_notification_target: 'history',
+        ...cancelledPayload
+      }
     }).catch((error) => console.error('Push notification failed:', error.message));
 
     logBookingEvent(req, 'booking_cancelled', {
@@ -606,6 +621,7 @@ const cancelBooking = async (req, res) => {
       }
     });
   } catch (error) {
+    incrementCounter('bookingTransitionFailures');
     logBookingError(req, 'booking_cancel_failed', error);
     res.status(500).json({ message: error.message });
   }
@@ -618,10 +634,23 @@ const getUserBookings = async (req, res) => {
   try {
     await expirePendingBookingsForPassenger(req, req.user.id);
 
+    const shouldPaginate = shouldUseCursorPagination(req.query);
+    const pageResult = shouldPaginate
+      ? await paginateFindQuery({
+          model: Booking,
+          query: { passenger_id: req.user.id },
+          cursor: req.query.cursor,
+          limit: req.query.limit,
+          sort: { _id: -1 }
+        })
+      : null;
+
     // 1. Get the bookings for the user
-    const bookings = await Booking.find({ passenger_id: req.user.id })
-      .sort({ booked_at: -1 })
-      .lean(); // Use .lean() to get plain JS objects so we can modify them
+    const bookings = pageResult
+      ? pageResult.items
+      : await Booking.find({ passenger_id: req.user.id })
+          .sort({ booked_at: -1 })
+          .lean(); // Use .lean() to get plain JS objects so we can modify them
 
     // 2. Manually "populate" the posts
     const populatedBookings = await Promise.all(
@@ -636,6 +665,10 @@ const getUserBookings = async (req, res) => {
         return { ...cancelWindow, post_id: postObject }; // Replace the ID string with the post object
       })
     );
+
+    if (pageResult) {
+      return res.json({ items: populatedBookings, page: pageResult.page });
+    }
 
     res.json(populatedBookings);
   } catch (error) {
@@ -656,10 +689,26 @@ const getRideBookings = async (req, res) => {
     if (post.driver_id.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Only the ride host can view booking requests' });
     }
-   const bookings = await Booking.find({ post_id: post.post_id })
+
+    const shouldPaginate = shouldUseCursorPagination(req.query);
+    if (shouldPaginate) {
+      const pageResult = await paginateFindQuery({
+        model: Booking,
+        query: { post_id: post.post_id },
+        cursor: req.query.cursor,
+        limit: req.query.limit,
+        sort: { _id: -1 },
+        populate: 'passenger_id first_name last_name email phone_number average_rating is_verified verification_status',
+        lean: false
+      });
+      const serialized = pageResult.items.map((item) => item.toObject());
+      return res.json({ items: serialized, page: pageResult.page });
+    }
+
+    const bookings = await Booking.find({ post_id: post.post_id })
       .populate('passenger_id', 'first_name last_name email phone_number average_rating is_verified verification_status')
       .sort({ booked_at: 1 });
-      
+
     res.json(bookings);
   } catch (error) {
     res.status(500).json({ message: error.message });

@@ -29,6 +29,8 @@ const userSchema = new mongoose.Schema({
   password_reset_token_hash: { type: String, default: null },
   password_reset_expires_at: { type: Date, default: null },
   password_changed_at: { type: Date, default: null },
+  refresh_token_hash: { type: String, default: null },
+  token_version: { type: Number, default: 0 },
   is_banned: { type: Boolean, default: false },
   fcm_tokens: { type: [String], default: [] },
   created_at: { type: Date, default: Date.now },

@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.tritech.hopon.R
+import com.tritech.hopon.notifications.NotificationRouting
 import com.tritech.hopon.ui.components.hopOnComposeTheme
 import com.tritech.hopon.ui.rideDiscovery.core.ApiClient
 import com.tritech.hopon.ui.rideDiscovery.core.ApiLoginRequest
@@ -23,7 +24,7 @@ class LoginActivity : AppCompatActivity() {
 
         // Skip login screen when a previous authenticated session exists.
         if (SessionManager.isLoggedIn(this)) {
-            navigateToHome()
+            navigateToHome(intent)
             return
         }
 
@@ -64,7 +65,7 @@ class LoginActivity : AppCompatActivity() {
                     SessionManager.setDisplayName(this@LoginActivity, user.fullName)
                 }
 
-                navigateToHome()
+                navigateToHome(intent)
             } catch (e: retrofit2.HttpException) {
                 val msg = if (e.code() == 401 || e.code() == 400) {
                     getString(R.string.login_failed)
@@ -78,8 +79,25 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
-    private fun navigateToHome() {
-        startActivity(Intent(this, RootHostActivity::class.java))
+    private fun navigateToHome(sourceIntent: Intent? = null) {
+        val nextIntent = Intent(this, RootHostActivity::class.java)
+        sourceIntent?.let { incoming ->
+            listOf(
+                NotificationRouting.EXTRA_NOTIFICATION_TARGET,
+                NotificationRouting.EXTRA_NOTIFICATION_POST_ID,
+                NotificationRouting.EXTRA_NOTIFICATION_POST_UUID,
+                "type",
+                "post_id",
+                "post_uuid"
+            ).forEach { key ->
+                val value = incoming.getStringExtra(key)
+                if (!value.isNullOrBlank()) {
+                    nextIntent.putExtra(key, value)
+                }
+            }
+        }
+
+        startActivity(nextIntent)
         finish()
     }
 
