@@ -9,13 +9,14 @@ const {
   getUserBookings, 
   getRideBookings 
 } = require('../controllers/bookingsController');
+const { bookingMutationRateLimiter } = require('../middleware/security');
 
-router.post('/', requestBooking);
+router.post('/', bookingMutationRateLimiter, requestBooking);
 router.get('/me', getUserBookings);
 router.get('/posts/:id', getRideBookings);
-router.patch('/:id/respond', respondToBooking);
-router.patch('/:id/arrive', markBookingArrived);
-router.patch('/:id/confirm-boarded', confirmPassengerBoarded);
-router.patch('/:id/cancel', cancelBooking);
+router.patch('/:id/respond', bookingMutationRateLimiter, respondToBooking);
+router.patch('/:id/arrive', bookingMutationRateLimiter, markBookingArrived);
+router.patch('/:id/confirm-boarded', bookingMutationRateLimiter, confirmPassengerBoarded);
+router.patch('/:id/cancel', bookingMutationRateLimiter, cancelBooking);
 
 module.exports = router;

@@ -239,12 +239,13 @@ private fun rideRoleBadge(role: RideParticipationRole) {
 @Composable
 private fun hostVerificationStatusBadge(status: String?) {
     val normalized = status?.trim()?.lowercase(Locale.US) ?: "unverified"
-    val (label, tone) = when (normalized) {
+    val style = when (normalized) {
         "verified" -> stringResource(R.string.verification_status_verified) to HopOnBadgeTone.GREEN
         "pending" -> stringResource(R.string.verification_status_pending) to HopOnBadgeTone.YELLOW
         "rejected" -> stringResource(R.string.verification_status_rejected) to HopOnBadgeTone.BLUE
-        else -> stringResource(R.string.verification_status_unverified) to HopOnBadgeTone.BLUE
-    }
+        else -> null
+    } ?: return
+    val (label, tone) = style
     val colors = hopOnBadgeColors(tone)
     Row(
         modifier = Modifier

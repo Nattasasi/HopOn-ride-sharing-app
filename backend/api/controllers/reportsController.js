@@ -212,6 +212,12 @@ const getAdminReports = async (req, res) => {
 
 const updateReportStatus = [
   body('status').isIn(REPORT_STATUSES).withMessage('Invalid report status'),
+  body('resolution_notes')
+    .optional()
+    .isString()
+    .withMessage('resolution_notes must be a string')
+    .isLength({ max: 1000 })
+    .withMessage('resolution_notes must be at most 1000 characters'),
   async (req, res) => {
     try {
       if (!validate(req, res)) return;
@@ -220,6 +226,15 @@ const updateReportStatus = [
       if (!report) return res.status(404).json({ message: 'Report not found' });
 
       report.status = req.body.status;
+      if (typeof req.body.resolution_notes === 'string') {
+        report.resolution_notes = req.body.resolution_notes.trim() || null;
+      }
+      if (req.body.status === 'resolved') {
+        report.resolved_at = new Date();
+      } else if (req.body.status === 'pending') {
+        report.resolved_at = null;
+        report.resolution_notes = null;
+      }
       await report.save();
       const updated = await Report.findById(report._id)
         .populate('reporter_id', 'first_name last_name email role')

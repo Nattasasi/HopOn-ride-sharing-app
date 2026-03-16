@@ -213,6 +213,7 @@ fun ApiMessage.toMockChatMessage(): MockChatMessage {
         isoToDateTimeLabel(sent_at ?: "")
     }.getOrDefault(sent_at ?: "")
     return MockChatMessage(
+        localId           = id ?: "remote-${sender_id?.id ?: "unknown"}-${sent_at ?: body.hashCode()}",
         senderUserId      = sender_id?.id ?: "",
         senderDisplayName = senderName,
         message           = body,

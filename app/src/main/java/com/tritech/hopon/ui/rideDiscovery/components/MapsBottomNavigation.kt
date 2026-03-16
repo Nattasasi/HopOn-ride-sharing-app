@@ -15,9 +15,11 @@ import androidx.compose.material.icons.filled.DirectionsCarFilled
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -29,6 +31,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.alpha
@@ -61,22 +64,32 @@ fun mapsBottomNavigation(
     onItemSelected: (MapsBottomNavItem) -> Unit
 ) {
     val accentColor = colorResource(id = R.color.colorPrimary)
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant
     val itemColors = NavigationBarItemDefaults.colors(
         indicatorColor = Color.Transparent,
         selectedIconColor = accentColor,
-        selectedTextColor = Color.Black,
-        unselectedIconColor = Color.DarkGray,
-        unselectedTextColor = Color.DarkGray
+        selectedTextColor = MaterialTheme.colorScheme.onSurface,
+        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
     ) {
+        // Keep a visible separator between content and bottom nav.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(dividerColor)
+                .align(Alignment.TopCenter)
+        )
+
         NavigationBar(
             modifier = Modifier.fillMaxWidth(),
-            containerColor = Color.White,
-            contentColor = Color.DarkGray,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             windowInsets = WindowInsets(0, 0, 0, 0)
         ) {
             NavigationBarItem(
@@ -88,11 +101,12 @@ fun mapsBottomNavigation(
                     BottomNavIconWithIndicator(
                         imageVector = Icons.Filled.DirectionsCarFilled,
                         selected = selectedItem == MapsBottomNavItem.HOME,
-                        accentColor = accentColor
+                        accentColor = accentColor,
+                        contentDescription = stringResource(id = R.string.nav_home)
                     )
                 },
-                label = null,
-                alwaysShowLabel = false,
+                label = { Text(text = stringResource(id = R.string.nav_home), style = MaterialTheme.typography.labelSmall) },
+                alwaysShowLabel = true,
                 colors = itemColors
             )
 
@@ -105,11 +119,12 @@ fun mapsBottomNavigation(
                     BottomNavIconWithIndicator(
                         imageVector = Icons.Filled.History,
                         selected = selectedItem == MapsBottomNavItem.RIDES,
-                        accentColor = accentColor
+                        accentColor = accentColor,
+                        contentDescription = stringResource(id = R.string.nav_history)
                     )
                 },
-                label = null,
-                alwaysShowLabel = false,
+                label = { Text(text = stringResource(id = R.string.nav_history), style = MaterialTheme.typography.labelSmall) },
+                alwaysShowLabel = true,
                 colors = itemColors
             )
 
@@ -122,11 +137,12 @@ fun mapsBottomNavigation(
                     BottomNavIconWithIndicator(
                         imageVector = Icons.Filled.Person,
                         selected = selectedItem == MapsBottomNavItem.PROFILE,
-                        accentColor = accentColor
+                        accentColor = accentColor,
+                        contentDescription = stringResource(id = R.string.nav_profile)
                     )
                 },
-                label = null,
-                alwaysShowLabel = false,
+                label = { Text(text = stringResource(id = R.string.nav_profile), style = MaterialTheme.typography.labelSmall) },
+                alwaysShowLabel = true,
                 colors = itemColors
             )
         }
@@ -137,7 +153,8 @@ fun mapsBottomNavigation(
 private fun BottomNavIconWithIndicator(
     imageVector: ImageVector,
     selected: Boolean,
-    accentColor: Color
+    accentColor: Color,
+    contentDescription: String
 ) {
     val indicatorWidth by animateDpAsState(
         targetValue = if (selected) 24.dp else 0.dp,
@@ -161,7 +178,7 @@ private fun BottomNavIconWithIndicator(
     ) {
         Icon(
             imageVector = imageVector,
-            contentDescription = null,
+            contentDescription = contentDescription,
             modifier = Modifier
                 .size(28.dp)
                 .scale(iconScale)

@@ -15,7 +15,9 @@ const reportSchema = new mongoose.Schema(
       enum: ['pending', 'reviewed', 'resolved', 'dismissed'],
       default: 'pending',
       required: true
-    }
+    },
+    resolution_notes: { type: String, default: null, trim: true, maxlength: 1000 },
+    resolved_at: { type: Date, default: null }
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }

@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Booking = require('../models/Booking');
 const Feedback = require('../models/Feedback');
 const { body, validationResult } = require('express-validator');
+const { sendToUsers } = require('../services/pushNotifications');
 
 const ACTIVE_HOST_RIDE_STATUSES = ['active', 'in_progress'];
 const CANCEL_CUTOFF_MINUTES = 30;
@@ -44,6 +45,21 @@ const hasPassedCancellationCutoff = (departureTime) => {
   return Date.now() > cutoffEpoch;
 };
 
+const buildRideStatusNotification = (status) => {
+  switch (status) {
+    case 'cancelled':
+      return { title: 'Ride cancelled', body: 'A ride you are part of was cancelled.' };
+    case 'completed':
+      return { title: 'Ride completed', body: 'Your ride has been marked completed.' };
+    case 'in_progress':
+      return { title: 'Ride started', body: 'Your ride is now in progress.' };
+    case 'active':
+      return { title: 'Ride active', body: 'Your ride is now active.' };
+    default:
+      return { title: 'Ride update', body: `Ride status changed to ${status}.` };
+  }
+};
+
 const buildUpcomingJoinableFilter = () => ({
   status: 'active',
   available_seats: { $gt: 0 },
@@ -77,6 +93,65 @@ const getRideParticipantUserIds = async (post) => {
     post.driver_id?.toString(),
     ...relatedBookings.map((item) => item.passenger_id?.toString())
   ];
+};
+
+const buildRideStartChecklist = (post, activeBookings, nowEpoch = Date.now()) => {
+  const blockers = [];
+  const pendingBookings = activeBookings.filter((booking) => booking.status === 'pending');
+  if (pendingBookings.length === 1) {
+    blockers.push({
+      code: 'PENDING_BOOKING_REQUESTS',
+      message: 'Review the pending booking request before starting the ride.'
+    });
+  } else if (pendingBookings.length > 1) {
+    blockers.push({
+      code: 'PENDING_BOOKING_REQUESTS',
+      message: `Review ${pendingBookings.length} pending booking requests before starting the ride.`
+    });
+  }
+
+  const bookedPassengerBookings = activeBookings.filter((booking) =>
+    CONFIRMED_LIKE_BOOKING_STATUSES.includes(booking.status)
+  );
+  const unboardedConfirmedBookings = bookedPassengerBookings.filter(
+    (booking) => booking.pickup_status !== PICKUP_STATUS_BOARDED
+  );
+
+  const noOneBookedYet = bookedPassengerBookings.length === 0;
+  const allBookedUsersBoarded = bookedPassengerBookings.every(
+    (booking) => booking.pickup_status === PICKUP_STATUS_BOARDED
+  );
+  const canBypassWaitTimer = noOneBookedYet || allBookedUsersBoarded;
+
+  const waitMinutes = Math.max(0, post.wait_time_minutes || 0);
+  const waitUntilEpoch = new Date(post.departure_time).getTime() + (waitMinutes * 60 * 1000);
+  if (
+    Number.isFinite(waitUntilEpoch) &&
+    nowEpoch < waitUntilEpoch &&
+    !canBypassWaitTimer
+  ) {
+    if (unboardedConfirmedBookings.length === 1) {
+      blockers.push({
+        code: 'UNBOARDED_CONFIRMED_PASSENGERS',
+        message: 'A confirmed passenger is not boarded yet.'
+      });
+    } else if (unboardedConfirmedBookings.length > 1) {
+      blockers.push({
+        code: 'UNBOARDED_CONFIRMED_PASSENGERS',
+        message: `${unboardedConfirmedBookings.length} confirmed passengers are not boarded yet.`
+      });
+    }
+    blockers.push({
+      code: 'WAIT_TIMER_ACTIVE',
+      message: 'Wait timer is still active. Please wait before starting the ride.',
+      wait_seconds_remaining: Math.max(1, Math.ceil((waitUntilEpoch - nowEpoch) / 1000))
+    });
+  }
+
+  return {
+    isReady: blockers.length === 0,
+    blockers
+  };
 };
 
 const getPosts = async (req, res) => {
@@ -335,6 +410,22 @@ const updatePostStatus = async (req, res) => {
     };
     emitRideEvent(req, post._id.toString(), 'ride_cancelled', payload);
     emitRideEventToUsers(req, cancelledParticipantUserIds, 'ride_cancelled', payload);
+
+    const notification = buildRideStatusNotification('cancelled');
+    sendToUsers({
+      userIds: cancelledParticipantUserIds,
+      excludeUserId: req.user.id,
+      notification,
+      data: { type: 'ride_cancelled', ...payload }
+    }).catch((error) => console.error('Push notification failed:', error.message));
+  } else {
+    const notification = buildRideStatusNotification(status);
+    sendToUsers({
+      userIds: participantUserIds,
+      excludeUserId: req.user.id,
+      notification,
+      data: { type: 'ride_status_changed', ...rideStatusPayload }
+    }).catch((error) => console.error('Push notification failed:', error.message));
   }
 
   if (status === 'completed') {
@@ -365,29 +456,21 @@ const startPostRide = async (req, res) => {
       post_id: post.post_id,
       status: { $in: ACTIVE_BOOKING_STATUSES }
     });
-    const bookedPassengerBookings = activeBookings.filter((booking) =>
-      CONFIRMED_LIKE_BOOKING_STATUSES.includes(booking.status)
-    );
-    const noOneBookedYet = bookedPassengerBookings.length === 0;
-    const allBookedUsersBoarded = bookedPassengerBookings.every(
-      (booking) => booking.pickup_status === PICKUP_STATUS_BOARDED
-    );
-    const canBypassWaitTimer = noOneBookedYet || allBookedUsersBoarded;
-
-    const waitMinutes = Math.max(0, post.wait_time_minutes || 0);
-    const waitUntilEpoch = new Date(post.departure_time).getTime() + (waitMinutes * 60 * 1000);
-    if (
-      req.user.role !== 'admin' &&
-      Number.isFinite(waitUntilEpoch) &&
-      Date.now() < waitUntilEpoch &&
-      !canBypassWaitTimer
-    ) {
-      const secondsRemaining = Math.max(1, Math.ceil((waitUntilEpoch - Date.now()) / 1000));
-      return res.status(409).json({
-        code: 'WAIT_TIMER_ACTIVE',
-        message: 'Wait timer is still active. Please wait before starting the ride.',
-        wait_seconds_remaining: secondsRemaining
-      });
+    if (req.user.role !== 'admin') {
+      const checklist = buildRideStartChecklist(post, activeBookings);
+      if (!checklist.isReady) {
+        const primaryBlocker = checklist.blockers[0];
+        const payload = {
+          code: 'RIDE_START_CHECKLIST_INCOMPLETE',
+          message: primaryBlocker.message,
+          blockers: checklist.blockers
+        };
+        const waitTimerBlocker = checklist.blockers.find((item) => item.code === 'WAIT_TIMER_ACTIVE');
+        if (waitTimerBlocker) {
+          payload.wait_seconds_remaining = waitTimerBlocker.wait_seconds_remaining;
+        }
+        return res.status(409).json(payload);
+      }
     }
     const confirmedBookings = activeBookings.filter((booking) => booking.status === 'confirmed');
     const leftBehindBookings = [];
@@ -434,6 +517,20 @@ const startPostRide = async (req, res) => {
       left_behind_count: leftBehindBookings.length
     });
     emitRideEventToUsers(req, participantUserIds, 'ride_status_changed', rideStatusPayload);
+
+    const notification = buildRideStatusNotification('in_progress');
+    sendToUsers({
+      userIds: participantUserIds,
+      excludeUserId: req.user.id,
+      notification,
+      data: {
+        type: 'ride_started',
+        post_id: post._id.toString(),
+        post_uuid: post.post_id,
+        status: post.status,
+        left_behind_count: leftBehindBookings.length
+      }
+    }).catch((error) => console.error('Push notification failed:', error.message));
 
     res.json(post);
   } catch (error) {

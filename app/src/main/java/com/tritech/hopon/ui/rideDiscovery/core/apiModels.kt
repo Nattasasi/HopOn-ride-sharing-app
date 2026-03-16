@@ -80,6 +80,15 @@ data class ApiVerificationStatus(
     val verified_at: String? = null
 )
 
+data class ApiPushTokenRequest(
+    val token: String,
+    val platform: String = "android"
+)
+
+data class ApiPushTokenResponse(
+    val message: String? = null
+)
+
 // ─── Carpool Post (Ride) ──────────────────────────────────────────────────────
 
 /**
@@ -195,11 +204,16 @@ data class ApiBooking(
     @SerializedName("post_id") private val rawPostId: JsonElement? = null,
     @SerializedName("passenger_id") private val rawPassengerId: JsonElement? = null,
     val status: String? = "pending",
+    val seats_booked: Int = 1,
     val pickup_status: String? = "not_arrived",
     val arrived_at: String? = null,
     val confirmed_by_driver_at: String? = null,
     val left_behind_at: String? = null,
-    val created_at: String? = null
+    val created_at: String? = null,
+    /** ISO timestamp: booked_at + FREE_CANCEL_WINDOW_MINUTES. Present on pending/confirmed bookings only. */
+    val cancellation_cutoff_at: String? = null,
+    /** Seconds remaining in the free-cancel window at the time of API response. */
+    val seconds_until_free_cancel: Int? = null
 ) {
     val post_id: ApiCarpoolPost?
         get() = rawPostId
@@ -406,17 +420,52 @@ data class ApiCreateFeedbackRequest(
 data class ApiReport(
     @SerializedName("_id") val id: String? = null,
     val report_id: String? = null,
-    val post_id: String? = null,
-    val reporter_id: String? = null,
-    val reported_user_id: String? = null,
+    @SerializedName("post_id") private val rawPostId: JsonElement? = null,
+    @SerializedName("reporter_id") private val rawReporterId: JsonElement? = null,
+    @SerializedName("reported_user_id") private val rawReportedUserId: JsonElement? = null,
     val booking_id: String? = null,
     val stage: String,
     val category: String,
     val description: String,
     val status: String = "pending",
+    val resolution_notes: String? = null,
+    val resolved_at: String? = null,
     val created_at: String? = null,
     val updated_at: String? = null
-)
+) {
+    val post_id: String?
+        get() = when {
+            rawPostId == null || rawPostId.isJsonNull -> null
+            rawPostId.isJsonPrimitive -> rawPostId.asString
+            rawPostId.isJsonObject -> rawPostId.asJsonObject.get("_id")?.takeIf { !it.isJsonNull }?.asString
+            else -> null
+        }
+
+    val reported_user_id: String?
+        get() = when {
+            rawReportedUserId == null || rawReportedUserId.isJsonNull -> null
+            rawReportedUserId.isJsonPrimitive -> rawReportedUserId.asString
+            rawReportedUserId.isJsonObject -> rawReportedUserId.asJsonObject.get("_id")?.takeIf { !it.isJsonNull }?.asString
+            else -> null
+        }
+
+    val reported_user_name: String?
+        get() {
+            if (rawReportedUserId == null || !rawReportedUserId.isJsonObject) return null
+            val obj = rawReportedUserId.asJsonObject
+            val first = obj.get("first_name")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+            val last = obj.get("last_name")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+            return "$first $last".trim().ifBlank { null }
+        }
+
+    val reporter_id: String?
+        get() = when {
+            rawReporterId == null || rawReporterId.isJsonNull -> null
+            rawReporterId.isJsonPrimitive -> rawReporterId.asString
+            rawReporterId.isJsonObject -> rawReporterId.asJsonObject.get("_id")?.takeIf { !it.isJsonNull }?.asString
+            else -> null
+        }
+}
 
 data class ApiCreateReportRequest(
     val post_id: String,

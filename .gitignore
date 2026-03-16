@@ -13,6 +13,7 @@ backend/web/.env.local
 *.keystore
 google-services.json
 GoogleService-Info.plist
+kotlin-messaging-e1bd8-firebase-adminsdk-fbsvc-c3d67ebcc3.json
 
 # Local docs / working notes (keep root README.md as primary doc)
 *.md

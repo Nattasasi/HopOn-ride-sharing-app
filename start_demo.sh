@@ -3,8 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend/api"
+WEB_DIR="$ROOT_DIR/backend/web"
 LOCAL_PROPERTIES="$ROOT_DIR/local.properties"
 BACKEND_LOG="/tmp/hopon-backend.log"
+WEB_LOG="/tmp/hopon-web.log"
 TUNNEL_LOG="/tmp/hopon-cloudflared.log"
 
 DEVICE_SERIAL="${1:-}"
@@ -35,6 +37,11 @@ for pid in $(lsof -ti tcp:3001 2>/dev/null || true); do
   kill -9 "$pid" || true
 done
 
+echo "🔄 Clearing port 3000..."
+for pid in $(lsof -ti tcp:3000 2>/dev/null || true); do
+  kill -9 "$pid" || true
+done
+
 echo "🚀 Starting backend..."
 cd "$BACKEND_DIR"
 nohup node app.js >"$BACKEND_LOG" 2>&1 &
@@ -53,13 +60,26 @@ if ! lsof -ti tcp:3001 >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "🌐 Starting admin portal..."
+cd "$WEB_DIR"
+nohup npm run dev -- --port 3000 >"$WEB_LOG" 2>&1 &
+WEB_PID=$!
+
+echo "🔄 Clearing previous Cloudflare tunnel processes..."
+for pid in $(pgrep -f 'cloudflared tunnel --url http://localhost:3001' 2>/dev/null || true); do
+  kill -9 "$pid" || true
+done
+
+echo "🧹 Clearing old tunnel log..."
+: >"$TUNNEL_LOG"
+
 echo "🌐 Starting Cloudflare tunnel..."
 nohup cloudflared tunnel --url http://localhost:3001 --logfile "$TUNNEL_LOG" >/tmp/hopon-cloudflared.out 2>&1 &
 TUNNEL_PID=$!
 
 TUNNEL_URL=""
 for _ in {1..60}; do
-  TUNNEL_URL="$(grep -Eo 'https://[-a-zA-Z0-9]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -n 1 || true)"
+  TUNNEL_URL="$(grep -Eo 'https://[-a-zA-Z0-9]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -n 1 || true)"
   if [[ -n "$TUNNEL_URL" ]]; then
     break
   fi
@@ -120,11 +140,14 @@ fi
 
 echo
 echo "🎉 Demo environment ready"
-echo "- Backend PID: $BACKEND_PID"
-echo "- Tunnel PID:  $TUNNEL_PID"
-echo "- Tunnel URL:  $TUNNEL_URL"
-echo "- Backend log: $BACKEND_LOG"
-echo "- Tunnel log:  $TUNNEL_LOG"
+echo "- Backend PID:      $BACKEND_PID"
+echo "- Admin portal PID: $WEB_PID"
+echo "- Tunnel PID:       $TUNNEL_PID"
+echo "- Tunnel URL:       $TUNNEL_URL"
+echo "- Admin portal:     http://localhost:3000"
+echo "- Backend log:      $BACKEND_LOG"
+echo "- Web log:          $WEB_LOG"
+echo "- Tunnel log:       $TUNNEL_LOG"
 echo
 echo "To stop later:"
-echo "  kill $BACKEND_PID $TUNNEL_PID"
+echo "  kill $BACKEND_PID $WEB_PID $TUNNEL_PID"

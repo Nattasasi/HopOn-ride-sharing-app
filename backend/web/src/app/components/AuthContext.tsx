@@ -7,7 +7,7 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 interface AuthContextType {
   isLoggedIn: boolean;
   userId: string | null;
-  login: (id: string, token: string) => void;
+  login: (id: string, token: string, refreshToken?: string) => void;
   logout: () => void;
 }
 
@@ -26,9 +26,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return Boolean(storedUserId && storedToken);
   });
 
-  const login = (id: string, token: string) => {
+  const login = (id: string, token: string, refreshToken?: string) => {
     localStorage.setItem('userId', id);
     localStorage.setItem('token', token);
+    if (refreshToken) {
+      localStorage.setItem('refreshToken', refreshToken);
+    }
     setIsLoggedIn(true);
     setUserId(id);
   };
@@ -36,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem('userId');
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
     setIsLoggedIn(false);
     setUserId(null);
     router.push('/');

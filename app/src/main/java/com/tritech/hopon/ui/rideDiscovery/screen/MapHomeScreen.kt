@@ -26,6 +26,10 @@ fun mapHomeRideResultsScreen(
     selectedRide: RideListItem?,
     currentUserId: String?,
     currentUserName: String,
+    emptyStateTitle: String? = null,
+    emptyStateMessage: String? = null,
+    emptyStateActionLabel: String? = null,
+    onEmptyStateAction: (() -> Unit)? = null,
     onExpandChange: (Boolean) -> Unit,
     onRideClick: (RideListItem) -> Unit
 ) {
@@ -37,6 +41,10 @@ fun mapHomeRideResultsScreen(
         selectedRide = selectedRide,
         currentUserId = currentUserId,
         currentUserName = currentUserName,
+        emptyStateTitle = emptyStateTitle,
+        emptyStateMessage = emptyStateMessage,
+        emptyStateActionLabel = emptyStateActionLabel,
+        onEmptyStateAction = onEmptyStateAction,
         onRideClick = onRideClick
     )
 }

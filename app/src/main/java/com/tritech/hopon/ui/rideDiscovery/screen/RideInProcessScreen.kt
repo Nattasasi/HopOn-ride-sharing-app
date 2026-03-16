@@ -13,9 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -88,6 +91,9 @@ fun rideInProcessScreen(
     waitTimerLabel: String? = null,
     showStartRideAction: Boolean = false,
     isStartRideEnabled: Boolean = false,
+    startRideChecklistSummary: String? = null,
+    startRideChecklistBlockers: List<String> = emptyList(),
+    isRideStartChecklistReady: Boolean = false,
     showCompleteRideAction: Boolean = false,
     isActionLoading: Boolean = false,
     onPassengerArriveClick: () -> Unit = {},
@@ -263,6 +269,17 @@ fun rideInProcessScreen(
                     }
                 }
             }
+
+            if (isDriverView && showStartRideAction) {
+                rideStartChecklistCard(
+                    summary = startRideChecklistSummary,
+                    blockers = startRideChecklistBlockers,
+                    isReady = isRideStartChecklistReady,
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .fillMaxWidth()
+                )
+            }
         }
 
         Column(
@@ -271,11 +288,49 @@ fun rideInProcessScreen(
                 .padding(top = 12.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            hopOnButton(
-                text = stringResource(id = R.string.group_chat),
-                onClick = onGroupChatClick,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onGroupChatClick,
+                    modifier = Modifier
+                        .size(58.dp)
+                        .background(
+                            color = colorResource(id = R.color.colorPrimary),
+                            shape = CircleShape
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Chat,
+                        contentDescription = stringResource(id = R.string.group_chat),
+                        tint = Color.White
+                    )
+                }
+
+                if (showEmergencyAction) {
+                    IconButton(
+                        onClick = onEmergencyClick,
+                        enabled = !isActionLoading,
+                        modifier = Modifier
+                            .size(58.dp)
+                            .background(
+                                color = colorResource(id = R.color.cancelRideRed),
+                                shape = CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = stringResource(id = R.string.emergency_action),
+                            tint = Color.White
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.size(58.dp))
+                }
+            }
+
             if (showReportDriverAction) {
                 hopOnButton(
                     text = stringResource(id = R.string.report_driver),
@@ -316,23 +371,6 @@ fun rideInProcessScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
-            if (showEmergencyAction) {
-                hopOnButton(
-                    text = stringResource(id = R.string.emergency_action),
-                    onClick = onEmergencyClick,
-                    enabled = !isActionLoading,
-                    modifier = Modifier.fillMaxWidth(),
-                    containerColor = colorResource(id = R.color.cancelRideRed)
-                )
-            }
-            cancelWindowInfo?.takeIf { it.isNotBlank() }?.let { info ->
-                Text(
-                    text = info,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isCancelRideEnabled) Color.DarkGray else MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
             hopOnButton(
                 text = stringResource(id = R.string.cancel_ride),
                 onClick = onCancelRideClick,
@@ -340,6 +378,59 @@ fun rideInProcessScreen(
                 containerColor = colorResource(id = R.color.cancelRideRed),
                 enabled = isCancelRideEnabled
             )
+        }
+    }
+}
+
+@Composable
+private fun rideStartChecklistCard(
+    summary: String?,
+    blockers: List<String>,
+    isReady: Boolean,
+    modifier: Modifier = Modifier
+) {
+    if (summary.isNullOrBlank() && blockers.isEmpty()) return
+
+    val accentColor = if (isReady) {
+        colorResource(id = R.color.badgeGreenText)
+    } else {
+        MaterialTheme.colorScheme.error
+    }
+
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = accentColor.copy(alpha = 0.08f)
+        ),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(id = R.string.ride_start_checklist_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black
+            )
+            summary?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Black
+                )
+            }
+            blockers.forEach { blocker ->
+                Text(
+                    text = blocker,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Black
+                )
+            }
         }
     }
 }

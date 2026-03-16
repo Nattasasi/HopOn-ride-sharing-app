@@ -24,9 +24,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -53,12 +52,14 @@ fun profileScreen(
     verificationStatus: String?,
     onPersonalInformationClick: () -> Unit,
     onVerificationClick: () -> Unit,
+    onIssueReportsClick: () -> Unit,
     onLogoutClick: () -> Unit
 ) {
     val primary = colorResource(id = R.color.colorPrimary)
     val gray = colorResource(id = R.color.colorPrimaryDark)
     val personalInfoLabel = stringResource(id = R.string.profile_personal_information)
     val verificationLabel = stringResource(id = R.string.profile_verification_safety)
+    val issueReportsLabel = stringResource(id = R.string.report_status_title)
 
     val profileImageBitmap = remember(profilePhotoBase64) {
         decodeBase64ToBitmap(profilePhotoBase64)?.asImageBitmap()
@@ -119,6 +120,16 @@ fun profileScreen(
         )
 
         Text(
+            text = verificationStatusDisplayLabel(verificationStatus),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = primary,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(top = 6.dp)
+        )
+
+        Text(
             text = stringResource(id = R.string.profile_account_section),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
@@ -136,9 +147,7 @@ fun profileScreen(
             primaryTint = primary,
             secondaryTint = gray,
             onRowClick = { row ->
-                if (row.label == personalInfoLabel) {
-                    onPersonalInformationClick()
-                }
+                if (row.label == personalInfoLabel) onPersonalInformationClick()
             },
             modifier = Modifier.padding(top = 10.dp)
         )
@@ -154,41 +163,22 @@ fun profileScreen(
         settingGroupCard(
             rows = listOf(
                 SettingRowItem(
-                    label = verificationStatusDisplayLabel(verificationStatus),
+                    label = verificationLabel,
                     leadingIcon = Icons.Default.CreditCard
+                ),
+                SettingRowItem(
+                    label = issueReportsLabel,
+                    leadingIcon = Icons.Default.Flag
                 )
             ),
             primaryTint = primary,
             secondaryTint = gray,
-            onRowClick = { onVerificationClick() },
-            modifier = Modifier.padding(top = 10.dp)
-        )
-
-        Text(
-            text = stringResource(id = R.string.profile_ride_details_section),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = gray,
-            modifier = Modifier.padding(top = 22.dp)
-        )
-
-        settingGroupCard(
-            rows = listOf(
-                SettingRowItem(
-                    label = stringResource(id = R.string.profile_schedule_route_info),
-                    leadingIcon = Icons.Default.Timeline
-                ),
-                SettingRowItem(
-                    label = stringResource(id = R.string.profile_payment_cost),
-                    leadingIcon = Icons.Default.CreditCard
-                ),
-                SettingRowItem(
-                    label = stringResource(id = R.string.profile_rating_reviews),
-                    leadingIcon = Icons.Default.Star
-                )
-            ),
-            primaryTint = primary,
-            secondaryTint = gray,
+            onRowClick = { row ->
+                when (row.label) {
+                    verificationLabel -> onVerificationClick()
+                    issueReportsLabel -> onIssueReportsClick()
+                }
+            },
             modifier = Modifier.padding(top = 10.dp)
         )
 

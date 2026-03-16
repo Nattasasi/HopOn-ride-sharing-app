@@ -62,11 +62,19 @@ data class CreateRideSubmission(
 )
 
 data class MockChatMessage(
+    val localId: String = "",
     val senderUserId: String,
     val senderDisplayName: String,
     val message: String,
-    val sentAtLabel: String
+    val sentAtLabel: String,
+    val deliveryStatus: ChatDeliveryStatus = ChatDeliveryStatus.SENT
 )
+
+enum class ChatDeliveryStatus {
+    SENDING,
+    SENT,
+    FAILED
+}
 
 object MockData {
     val placeholderPlaces: List<PlaceholderPlace> = listOf(

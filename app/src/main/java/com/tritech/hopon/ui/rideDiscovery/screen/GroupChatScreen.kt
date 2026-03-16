@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tritech.hopon.R
+import com.tritech.hopon.ui.rideDiscovery.core.ChatDeliveryStatus
 import com.tritech.hopon.ui.rideDiscovery.core.MockChatMessage
 
 @Composable
@@ -54,7 +56,10 @@ fun groupChatScreen(
     currentUserId: String?,
     participants: List<String>,
     messages: List<MockChatMessage>,
+    isSocketConnected: Boolean,
+    isDataStale: Boolean,
     onSendMessage: (String) -> Unit,
+    onRetryMessage: (String) -> Unit = {},
     onBackClick: () -> Unit
 ) {
     var draftMessage by remember { mutableStateOf("") }
@@ -101,6 +106,34 @@ fun groupChatScreen(
             )
         }
 
+        if (!isSocketConnected) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = primaryTint.copy(alpha = 0.10f)),
+                border = BorderStroke(1.dp, primaryTint.copy(alpha = 0.28f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    Text(
+                        text = stringResource(id = R.string.group_chat_reconnecting),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = primaryTint,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (isDataStale) {
+                        Text(
+                            text = stringResource(id = R.string.group_chat_stale_data),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         HorizontalDivider()
 
         if (messages.isEmpty()) {
@@ -122,7 +155,14 @@ fun groupChatScreen(
                     .padding(top = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(messages) { message ->
+                items(
+                    items = messages,
+                    key = { message ->
+                        message.localId.ifBlank {
+                            "${message.senderUserId}-${message.sentAtLabel}-${message.message.hashCode()}"
+                        }
+                    }
+                ) { message ->
                     val isMine = currentUserId != null && currentUserId == message.senderUserId
                     val bubbleColor = if (isMine) {
                         primaryTint
@@ -165,6 +205,43 @@ fun groupChatScreen(
                                         .align(Alignment.End)
                                         .padding(top = 4.dp)
                                 )
+
+                                if (isMine) {
+                                    when (message.deliveryStatus) {
+                                        ChatDeliveryStatus.SENDING -> {
+                                            Text(
+                                                text = stringResource(id = R.string.group_chat_status_sending),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White.copy(alpha = 0.85f),
+                                                modifier = Modifier.align(Alignment.End)
+                                            )
+                                        }
+
+                                        ChatDeliveryStatus.FAILED -> {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.align(Alignment.End)
+                                            ) {
+                                                Text(
+                                                    text = stringResource(id = R.string.group_chat_status_failed),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color.White.copy(alpha = 0.85f)
+                                                )
+                                                TextButton(
+                                                    onClick = { onRetryMessage(message.localId) }
+                                                ) {
+                                                    Text(
+                                                        text = stringResource(id = R.string.group_chat_retry),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = Color.White
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        ChatDeliveryStatus.SENT -> Unit
+                                    }
+                                }
                             }
                         }
                     }

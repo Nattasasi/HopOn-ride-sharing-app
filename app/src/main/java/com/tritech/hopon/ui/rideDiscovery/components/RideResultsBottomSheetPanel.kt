@@ -60,6 +60,10 @@ fun rideResultsBottomSheetPanel(
     selectedRide: RideListItem?,
     currentUserId: String?,
     currentUserName: String,
+    emptyStateTitle: String? = null,
+    emptyStateMessage: String? = null,
+    emptyStateActionLabel: String? = null,
+    onEmptyStateAction: (() -> Unit)? = null,
     onRideClick: (RideListItem) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -200,10 +204,12 @@ fun rideResultsBottomSheetPanel(
                         // List mode - show all rides
                         Crossfade(targetState = rides, label = "ride-list-crossfade") { rideList ->
                             if (rideList.isEmpty()) {
-                                Text(
-                                    text = stringResource(id = R.string.no_rides_for_destination),
-                                    color = Color.DarkGray,
-                                    modifier = Modifier.padding(vertical = 20.dp)
+                                intentEmptyStateCard(
+                                    title = emptyStateTitle ?: stringResource(id = R.string.discovery_empty_no_rides_title),
+                                    message = emptyStateMessage ?: stringResource(id = R.string.no_rides_for_destination),
+                                    actionLabel = emptyStateActionLabel,
+                                    onActionClick = onEmptyStateAction,
+                                    modifier = Modifier.padding(vertical = 12.dp)
                                 )
                             } else {
                                 LazyColumn(

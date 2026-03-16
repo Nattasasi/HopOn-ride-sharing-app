@@ -19,6 +19,15 @@
     <string name="rides_for_destination">Available rides</string>
     <string name="rides_for_destination_named">Available rides to %1$s</string>
     <string name="no_rides_for_destination">No rides available for this destination</string>
+    <string name="discovery_empty_no_rides_title">No nearby rides yet</string>
+    <string name="discovery_empty_no_rides_message">No active rides are heading to %1$s right now. Try another nearby destination or create a ride instead.</string>
+    <string name="discovery_empty_clear_action">Choose another destination</string>
+    <string name="discovery_empty_network_title">Couldn’t load rides</string>
+    <string name="discovery_empty_network_message">We couldn’t reach the ride service. Check your connection and try again.</string>
+    <string name="discovery_empty_network_action">Retry search</string>
+    <string name="discovery_empty_auth_title">Session expired</string>
+    <string name="discovery_empty_auth_message">Sign in again to keep browsing live rides and sending requests.</string>
+    <string name="discovery_empty_auth_action">Sign in again</string>
     <string name="meetup_format">Meetup: %1$s</string>
     <string name="pickup_distance_format">Pickup distance: %1$s km</string>
     <string name="meetup_datetime_format">Meetup date &amp; time: %1$s</string>
@@ -102,8 +111,18 @@
     <string name="close">Close</string>
     <string name="no_places_found">No places found</string>
     <string name="no_ride_history">No joined or created rides yet</string>
+    <string name="history_empty_title">No rides yet</string>
     <string name="history_empty_try_share">Try sharing a ride?</string>
     <string name="history_empty_state">No routes in this state yet.</string>
+    <string name="history_empty_action_create">Create a ride</string>
+    <string name="history_empty_network_title">Couldn’t load your rides</string>
+    <string name="history_empty_network_message">We couldn’t refresh your ride history. Check your connection and try again.</string>
+    <string name="history_empty_network_action">Retry history</string>
+    <string name="history_empty_auth_title">Sign in to see your rides</string>
+    <string name="history_empty_auth_message">Your session has expired. Sign in again to load your hosted and joined rides.</string>
+    <string name="history_empty_auth_action">Sign in again</string>
+    <string name="history_tab_empty_title">No %1$s rides yet</string>
+    <string name="history_tab_empty_message">Try another tab or come back after your next ride update.</string>
     <string name="history_section_ongoing">Ongoing</string>
     <string name="history_section_upcoming">Upcoming</string>
     <string name="history_section_completed">Completed</string>
@@ -144,6 +163,17 @@
     <string name="ride_ongoing_notification_channel_description">Notifications when your ride starts</string>
     <string name="ride_ongoing_notification_title">Your ride is now ongoing</string>
     <string name="ride_ongoing_notification_body">Tap to view Ride In Process</string>
+    <string name="ride_alerts_notification_channel_name">Ride alerts</string>
+    <string name="ride_alerts_notification_channel_description">Critical alerts for booking confirmations, rejections, and ride cancellations</string>
+    <string name="notification_booking_confirmed_title">Booking confirmed</string>
+    <string name="notification_booking_confirmed_body">Great news! Your seat has been confirmed.</string>
+    <string name="notification_booking_rejected_title">Booking update</string>
+    <string name="notification_booking_rejected_body">Your booking was not accepted. Find another ride.</string>
+    <string name="notification_ride_cancelled_alert_title">Ride cancelled</string>
+    <string name="notification_ride_cancelled_alert_body">The driver has cancelled this ride.</string>
+    <string name="toast_booking_confirmed">Your booking was confirmed!</string>
+    <string name="toast_booking_rejected">Your booking was not accepted.</string>
+    <string name="toast_ride_started">Your ride has started!</string>
     <string name="ride_in_process_time_countdown_format">%1$s | %2$d min</string>
     <string name="ride_in_process_departing_now">Departing now</string>
     <string name="group_chat">Group Chat</string>
@@ -152,6 +182,11 @@
     <string name="group_chat_no_messages">No messages yet. Start the conversation.</string>
     <string name="group_chat_input_placeholder">Type a message</string>
     <string name="group_chat_send">Send message</string>
+    <string name="group_chat_reconnecting">Reconnecting chat…</string>
+    <string name="group_chat_stale_data">Messages may be out of date until connection is restored.</string>
+    <string name="group_chat_status_sending">Sending…</string>
+    <string name="group_chat_status_failed">Failed</string>
+    <string name="group_chat_retry">Retry</string>
     <string name="report_driver">Report Driver</string>
     <string name="report_dialog_message">Tell us what happened. This report will be reviewed by admin.</string>
     <string name="report_category_hint">Category (e.g. unsafe driving)</string>
@@ -162,6 +197,36 @@
     <string name="report_submit_success">Report submitted</string>
     <string name="report_submit_failed">Failed to submit report</string>
     <string name="report_not_allowed">You cannot report this ride</string>
+    <string name="report_choose_issue_type">Choose issue type</string>
+    <string name="report_category_payment">Payment mismatch</string>
+    <string name="report_category_safety">Safety concern</string>
+    <string name="report_category_behavior">Driver behavior</string>
+    <string name="report_category_other">Other issue</string>
+    <string name="report_guidance_payment">Include expected amount, paid amount, and payment method.</string>
+    <string name="report_guidance_safety">Include location/time and clear sequence of events.</string>
+    <string name="report_guidance_behavior">Include specific behavior and how it affected the ride.</string>
+    <string name="report_guidance_other">Include what happened and the resolution you expect.</string>
+    <string name="report_starter_payment">Expected amount: 
+Paid amount: 
+Payment method: 
+Mismatch details: </string>
+    <string name="report_starter_safety">Location/time: 
+What happened: 
+Immediate impact: </string>
+    <string name="report_starter_behavior">Behavior observed: 
+When it happened: 
+Impact on trip: </string>
+    <string name="report_starter_other">Issue summary: 
+What should have happened: 
+Requested resolution: </string>
+    <string name="report_status_title">My issue reports</string>
+    <string name="report_status_empty">No issue reports submitted yet.</string>
+    <string name="report_status_load_failed">Unable to load issue reports.</string>
+    <string name="report_status_row_id">Report: %1$s</string>
+    <string name="report_status_row_status">Status: %1$s</string>
+    <string name="report_status_row_category">Category: %1$s</string>
+    <string name="report_status_row_created">Created: %1$s</string>
+    <string name="report_status_row_notes">Notes: %1$s</string>
     <string name="cancel_ride">Cancel Ride</string>
     <string name="cancel_ride_confirm_title">Cancel this ride?</string>
     <string name="cancel_ride_confirm_message">Are you sure you want to cancel this ongoing ride?</string>
@@ -204,6 +269,17 @@
     <string name="booking_status_rejected">Request Rejected</string>
     <string name="booking_status_cancelled">Booking Cancelled</string>
     <string name="join_ride_label">Join Ride</string>
+    <string name="join_fare_confirm_title">Confirm booking request</string>
+    <string name="join_fare_confirm_message">Seats available: %1$d
+Price per seat: %2$s
+Total for 1 seat: %3$s
+
+%4$s</string>
+    <string name="join_fare_per_seat_value">฿%1$.0f</string>
+    <string name="join_fare_total_value">฿%1$.0f</string>
+    <string name="join_fare_not_available">Not set</string>
+    <string name="join_fare_cancel_policy_default">Review cancellation policy before requesting this ride.</string>
+    <string name="join_fare_confirm_action">Confirm request</string>
     <string name="cancel_booking_label">Cancel Request</string>
     <string name="view_requests_label">View Requests (%1$d)</string>
     <string name="view_requests_label_none">View Requests</string>
@@ -218,6 +294,10 @@
     <string name="ride_not_joinable">This ride is no longer joinable.</string>
     <string name="booking_error_active_conflict">You already have an active booking. Cancel it before joining another ride.</string>
     <string name="booking_error_generic">Booking failed. Please try again.</string>
+    <string name="conflict_dialog_title">Overlapping Ride Time</string>
+    <string name="conflict_dialog_message">You have a booking that overlaps with this ride\'s departure window:\n\n%1$s\n\nDo you want to replace it, keep both, or go back?</string>
+    <string name="conflict_keep_both">Keep Both</string>
+    <string name="conflict_replace">Replace</string>
     <string name="booking_cancel_cutoff_expired">Booking cancellation is not allowed within 30 minutes of departure.</string>
     <string name="booking_cancel_blocked_cutoff">Cancel window expired</string>
     <string name="cancel_ride_cutoff_expired">Ride cancellation is not allowed within 30 minutes of departure.</string>
@@ -225,6 +305,8 @@
     <string name="cancel_cutoff_remaining_prefix">Cancellation available for %1$s more</string>
     <string name="cancel_cutoff_remaining_minutes">%1$d min</string>
     <string name="cancel_cutoff_remaining_hours_minutes">%1$dh %2$dm</string>
+    <string name="free_cancel_remaining">Free cancel in %1$s</string>
+    <string name="free_cancel_expired">Free cancel window closed</string>
     <string name="create_ride_error_active_conflict">You already have an active/in-progress hosted ride. Complete or cancel it before creating another.</string>
     <string name="create_ride_blocked_active_conflict">Active Ride Exists</string>
     <string name="create_ride_verification_required">You must be verified before creating a ride.</string>
@@ -235,6 +317,8 @@
     <string name="booking_requests_pending_count">Pending requests: %1$d</string>
     <string name="booking_request_accept">Accept</string>
     <string name="booking_request_reject">Reject</string>
+    <string name="booking_request_rating_label">Rating: %.1f ★</string>
+    <string name="booking_request_no_rating">No rating yet</string>
     <string name="booking_passenger_label">Passenger: %1$s</string>
     <string name="booking_unknown_passenger">Unknown passenger</string>
     <string name="booking_seats_label">Seats: %1$d</string>
@@ -261,6 +345,16 @@
     <string name="emergency_confirm_message">This sends your current ride location to admin for urgent help.</string>
     <string name="emergency_sent_success">Emergency alert sent</string>
     <string name="ride_start_success">Ride started.</string>
+    <string name="ride_start_checklist_title">Start readiness</string>
+    <string name="ride_start_ready_no_passengers">No confirmed passengers are waiting. You can start whenever you are ready.</string>
+    <string name="ride_start_ready_all_boarded">All confirmed passengers are checked in. You can start the ride now.</string>
+    <string name="ride_start_ready_left_behind_warning">Wait timer complete. Starting now will mark any missing confirmed passengers as left behind.</string>
+    <string name="ride_start_blockers_summary">Resolve these items before starting the ride.</string>
+    <string name="ride_start_blocker_pending_single">Review %1$s\'s pending request before starting.</string>
+    <string name="ride_start_blocker_pending_multiple">Review %1$d pending booking requests before starting.</string>
+    <string name="ride_start_blocker_not_arrived">%1$s has not arrived at pickup yet.</string>
+    <string name="ride_start_blocker_arrived">%1$s is waiting for boarding confirmation.</string>
+    <string name="ride_start_blocker_wait_timer">Wait timer still active for %1$s.</string>
     <string name="wait_timer_remaining_prefix">Wait timer: %1$s remaining</string>
     <string name="wait_timer_ready_to_start">Wait timer complete. You can start the ride.</string>
     <string name="wait_timer_not_ready">Wait timer is still active. Please wait before starting.</string>

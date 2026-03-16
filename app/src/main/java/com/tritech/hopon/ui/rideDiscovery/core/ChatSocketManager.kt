@@ -21,6 +21,13 @@ import org.json.JSONObject
  */
 class ChatSocketManager(private val context: Context) {
 
+    enum class ConnectionState {
+        CONNECTING,
+        CONNECTED,
+        DISCONNECTED,
+        ERROR
+    }
+
     companion object {
         private const val TAG = "ChatSocketManager"
         private const val EVENT_JOIN_POST = "join_post"
@@ -30,6 +37,7 @@ class ChatSocketManager(private val context: Context) {
 
     private var socket: Socket? = null
     private var currentPostId: String? = null
+    private var hasConnectedOnce = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val gson = Gson()
 
@@ -40,9 +48,15 @@ class ChatSocketManager(private val context: Context) {
      * @param onMessageReceived  Callback fired on the main thread when a new
      *                           message arrives from the server.
      */
-    fun connect(postId: String, onMessageReceived: (MockChatMessage) -> Unit) {
+    fun connect(
+        postId: String,
+        onMessageReceived: (MockChatMessage) -> Unit,
+        onConnectionStateChanged: (ConnectionState) -> Unit = {},
+        onReconnected: () -> Unit = {}
+    ) {
         disconnect()
         currentPostId = postId
+        hasConnectedOnce = false
 
         val socketUrl = ApiBaseUrlResolver.resolve()
             .replace("/api/v1/", "")
@@ -61,6 +75,7 @@ class ChatSocketManager(private val context: Context) {
         }
 
         val s = socket ?: return
+        mainHandler.post { onConnectionStateChanged(ConnectionState.CONNECTING) }
 
         s.on(Socket.EVENT_CONNECT) {
             Log.d(TAG, "Socket connected, joining post $postId")
@@ -70,6 +85,14 @@ class ChatSocketManager(private val context: Context) {
                 put("post_id", postId)
             }
             s.emit(EVENT_JOIN_POST, joinData)
+            mainHandler.post {
+                onConnectionStateChanged(ConnectionState.CONNECTED)
+                if (hasConnectedOnce) {
+                    onReconnected()
+                } else {
+                    hasConnectedOnce = true
+                }
+            }
         }
 
         s.on(EVENT_NEW_MESSAGE) { args ->
@@ -87,10 +110,12 @@ class ChatSocketManager(private val context: Context) {
 
         s.on(Socket.EVENT_CONNECT_ERROR) { args ->
             Log.e(TAG, "Socket connect error: ${args.firstOrNull()}")
+            mainHandler.post { onConnectionStateChanged(ConnectionState.ERROR) }
         }
 
         s.on(Socket.EVENT_DISCONNECT) { args ->
             Log.d(TAG, "Socket disconnected: ${args.firstOrNull()}")
+            mainHandler.post { onConnectionStateChanged(ConnectionState.DISCONNECTED) }
         }
 
         s.connect()
@@ -101,18 +126,19 @@ class ChatSocketManager(private val context: Context) {
      *
      * @param body  The message text.
      */
-    fun sendMessage(body: String) {
-        val postId = currentPostId ?: return
-        val s = socket ?: return
+    fun sendMessage(body: String): Boolean {
+        val postId = currentPostId ?: return false
+        val s = socket ?: return false
         if (!s.connected()) {
             Log.w(TAG, "Socket not connected, cannot send message")
-            return
+            return false
         }
         val data = JSONObject().apply {
             put("post_id", postId)
             put("body", body)
         }
         s.emit(EVENT_SEND_MESSAGE, data)
+        return true
     }
 
     /** Disconnects from the Socket.IO server and cleans up. */

@@ -14,10 +14,10 @@ interface RideRepository {
         lat: Double,
         lng: Double,
         radiusKm: Double? = null
-    ): List<RideListItem>
+    ): Result<List<RideListItem>>
 
     /** Returns all rides created or joined by the current user. */
-    suspend fun getMyRides(): List<RideListItem>
+    suspend fun getMyRides(): Result<List<RideListItem>>
 
     /**
      * Creates a new carpool post from a UI-layer [CreateRideSubmission].

@@ -21,6 +21,7 @@ class UserEventsSocketManager(private val context: Context) {
         private const val EVENT_RIDE_STATUS_CHANGED = "ride_status_changed"
         private const val EVENT_BOOKING_STATUS_CHANGED = "booking_status_changed"
         private const val EVENT_BOOKING_CANCELLED = "booking_cancelled"
+        private const val EVENT_RIDE_STARTED = "ride_started"
     }
 
     data class RideCancelledEvent(
@@ -72,6 +73,11 @@ class UserEventsSocketManager(private val context: Context) {
         val status: String?
     )
 
+    data class RideStartedEvent(
+        val postId: String?,
+        val postUuid: String?
+    )
+
     private var socket: Socket? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -83,7 +89,8 @@ class UserEventsSocketManager(private val context: Context) {
         onPassengerBoarded: (PassengerBoardedEvent) -> Unit = {},
         onRideStatusChanged: (RideStatusChangedEvent) -> Unit = {},
         onBookingStatusChanged: (BookingStatusChangedEvent) -> Unit = {},
-        onBookingCancelled: (BookingCancelledEvent) -> Unit = {}
+        onBookingCancelled: (BookingCancelledEvent) -> Unit = {},
+        onRideStarted: (RideStartedEvent) -> Unit = {}
     ) {
         disconnect()
 
@@ -205,6 +212,16 @@ class UserEventsSocketManager(private val context: Context) {
                 status = json.optString("status").takeIf { it.isNotBlank() }
             )
             mainHandler.post { onBookingCancelled(event) }
+        }
+
+        s.on(EVENT_RIDE_STARTED) { args ->
+            val payload = args.firstOrNull()?.toString().orEmpty()
+            val json = runCatching { org.json.JSONObject(payload) }.getOrNull()
+            val event = RideStartedEvent(
+                postId = json?.optString("post_id")?.takeIf { it.isNotBlank() },
+                postUuid = json?.optString("post_uuid")?.takeIf { it.isNotBlank() }
+            )
+            mainHandler.post { onRideStarted(event) }
         }
 
         s.on(Socket.EVENT_CONNECT_ERROR) { args ->

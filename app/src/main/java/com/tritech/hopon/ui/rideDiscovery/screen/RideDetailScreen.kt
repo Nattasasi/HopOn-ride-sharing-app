@@ -29,7 +29,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -118,7 +117,7 @@ fun rideDetailScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -145,7 +144,7 @@ fun rideDetailScreen(
                 text = stringResource(id = R.string.ride_detail_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                color = Color.Black,
+                color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -160,19 +159,6 @@ fun rideDetailScreen(
                     textColor = badgeColors.textColor
                 )
             }
-        }
-
-        cancelWindowInfo?.takeIf { it.isNotBlank() }?.let { text ->
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (isCancelWindowExpired) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    Color.DarkGray
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
         }
 
         if (isCurrentUserHost && pendingRequestCount > 0) {
@@ -204,7 +190,7 @@ fun rideDetailScreen(
         Text(
             text = stringResource(id = R.string.pickup_distance_format, pickupDistanceKm),
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.DarkGray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp)
@@ -213,14 +199,14 @@ fun rideDetailScreen(
         Text(
             text = stringResource(id = R.string.meetup_datetime_format, meetupDateTime),
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.DarkGray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth()
         )
 
         Text(
             text = stringResource(id = R.string.wait_time_format, waitTimeMinutes),
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.DarkGray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -232,7 +218,7 @@ fun rideDetailScreen(
                 hostVehicleType
             ),
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.DarkGray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -240,7 +226,7 @@ fun rideDetailScreen(
             Text(
                 text = stringResource(id = R.string.vehicle_plate_format, vehiclePlate),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.DarkGray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -250,7 +236,7 @@ fun rideDetailScreen(
         Text(
             text = stringResource(id = R.string.people_count_format, peopleCount),
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.DarkGray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -259,7 +245,7 @@ fun rideDetailScreen(
             Text(
                 text = stringResource(id = R.string.price_per_seat_format, pricePerSeat),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.DarkGray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -269,7 +255,7 @@ fun rideDetailScreen(
             Text(
                 text = stringResource(id = R.string.seats_available_format, seatsAvailable),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.DarkGray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -279,13 +265,19 @@ fun rideDetailScreen(
                 text = stringResource(R.string.booking_requests_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.Black,
+                color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp)
             )
 
-            val pendingBookings = bookingRequests.filter { it.status == "pending" }
+            val pendingBookings = bookingRequests
+                .filter { it.status == "pending" }
+                .sortedWith(
+                    compareByDescending<ApiBooking> { it.passenger_id?.rating ?: 0.0 }
+                        .thenBy { it.seats_booked }
+                        .thenBy { it.created_at ?: "" }
+                )
             pendingBookings.forEach { booking ->
                 rideDetailBookingRequestCard(
                     booking = booking,
@@ -330,12 +322,13 @@ fun rideDetailScreen(
 @Composable
 private fun hostVerificationBadge(status: String?) {
     val normalized = status?.trim()?.lowercase(Locale.US) ?: "unverified"
-    val (label, tone) = when (normalized) {
+    val style = when (normalized) {
         "verified" -> stringResource(R.string.verification_status_verified) to HopOnBadgeTone.GREEN
         "pending" -> stringResource(R.string.verification_status_pending) to HopOnBadgeTone.YELLOW
         "rejected" -> stringResource(R.string.verification_status_rejected) to HopOnBadgeTone.BLUE
-        else -> stringResource(R.string.verification_status_unverified) to HopOnBadgeTone.BLUE
-    }
+        else -> null
+    } ?: return
+    val (label, tone) = style
     val colors = hopOnBadgeColors(tone)
     Row(modifier = Modifier.fillMaxWidth()) {
         statusBadge(
@@ -352,7 +345,8 @@ private fun rideDetailBookingRequestCard(
     onApprove: () -> Unit,
     onDecline: () -> Unit
 ) {
-    val passengerName = booking.passenger_id?.fullName
+    val passenger = booking.passenger_id
+    val passengerName = passenger?.fullName
         ?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.booking_unknown_passenger)
 
@@ -366,8 +360,9 @@ private fun rideDetailBookingRequestCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Name + status badge row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -389,6 +384,34 @@ private fun rideDetailBookingRequestCard(
                 }
             }
 
+            // Rating + seats row
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val rating = passenger?.rating
+                Text(
+                    text = if (rating != null && rating > 0.0) {
+                        String.format(Locale.US, stringResource(R.string.booking_request_rating_label), rating)
+                    } else {
+                        stringResource(R.string.booking_request_no_rating)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = stringResource(R.string.booking_seats_label, booking.seats_booked),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Verification badge (only when verified)
+            if (passenger?.verification_status?.trim()?.lowercase(Locale.US) == "verified") {
+                hostVerificationBadge(passenger.verification_status)
+            }
+
+            // Accept / Reject buttons
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -429,7 +452,7 @@ private fun rideDetailCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         Column(
@@ -441,12 +464,12 @@ private fun rideDetailCard(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.Gray
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyLarge,
-                color = Color.Black
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
     }

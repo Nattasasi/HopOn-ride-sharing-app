@@ -26,7 +26,11 @@ const userSchema = new mongoose.Schema({
   verification_doc_url: { type: String, default: null },
   verification_notes: { type: String, default: null },
   verified_at: { type: Date, default: null },
+  password_reset_token_hash: { type: String, default: null },
+  password_reset_expires_at: { type: Date, default: null },
+  password_changed_at: { type: Date, default: null },
   is_banned: { type: Boolean, default: false },
+  fcm_tokens: { type: [String], default: [] },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now }
 });

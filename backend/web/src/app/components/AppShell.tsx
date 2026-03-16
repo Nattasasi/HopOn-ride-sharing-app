@@ -3,8 +3,9 @@
 import { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import AppSidebar from './AppSidebar';
+import { useUserSocket } from '../hooks/useUserSocket';
 
-const shellRoutePrefixes = ['/home', '/posts', '/settings', '/admin'];
+const shellRoutePrefixes = ['/home', '/posts', '/reports', '/settings', '/admin'];
 
 function isShellRoute(pathname: string) {
   return shellRoutePrefixes.some(
@@ -14,6 +15,7 @@ function isShellRoute(pathname: string) {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  useUserSocket();
 
   if (!isShellRoute(pathname)) {
     return <>{children}</>;

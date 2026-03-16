@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tritech.hopon.R
 import com.tritech.hopon.ui.components.rideResultCard
+import com.tritech.hopon.ui.rideDiscovery.components.intentEmptyStateCard
 import com.tritech.hopon.ui.rideDiscovery.core.RideLifecycleStatus
 import com.tritech.hopon.ui.rideDiscovery.core.RideListItem
 
@@ -38,6 +39,10 @@ fun historyRidesScreen(
     rides: List<RideListItem>,
     currentUserId: String?,
     currentUserName: String,
+    emptyStateTitle: String? = null,
+    emptyStateMessage: String? = null,
+    emptyStateActionLabel: String? = null,
+    onEmptyStateAction: (() -> Unit)? = null,
     onRideClick: (RideListItem) -> Unit
 ) {
     val tabs = listOf(
@@ -98,19 +103,21 @@ fun historyRidesScreen(
         ) {
             if (!hasAnyRide) {
                 item {
-                    Text(
-                        text = stringResource(id = R.string.history_empty_try_share),
-                        color = Color.DarkGray,
-                        modifier = Modifier.padding(vertical = 20.dp)
+                    intentEmptyStateCard(
+                        title = emptyStateTitle ?: stringResource(id = R.string.history_empty_title),
+                        message = emptyStateMessage ?: stringResource(id = R.string.history_empty_try_share),
+                        actionLabel = emptyStateActionLabel,
+                        onActionClick = onEmptyStateAction,
+                        modifier = Modifier.padding(vertical = 12.dp)
                     )
                 }
             } else {
                 if (selectedTabRides.isEmpty()) {
                     item {
-                        Text(
-                            text = stringResource(id = R.string.history_empty_state),
-                            color = Color.DarkGray,
-                            modifier = Modifier.padding(vertical = 20.dp)
+                        intentEmptyStateCard(
+                            title = stringResource(id = R.string.history_tab_empty_title, tabs[selectedTabIndex].first),
+                            message = stringResource(id = R.string.history_tab_empty_message, tabs[selectedTabIndex].first),
+                            modifier = Modifier.padding(vertical = 12.dp)
                         )
                     }
                 } else {

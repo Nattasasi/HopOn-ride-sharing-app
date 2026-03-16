@@ -15,6 +15,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -33,6 +34,7 @@ android {
 
     buildTypes {
         debug {
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
             // Inject API keys from local.properties into generated string resources.
             resValue(
                 "string",
@@ -67,6 +69,7 @@ android {
             )
         }
         release {
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
             // Provide production build with the same key injection source.
             resValue(
                 "string",
@@ -180,6 +183,11 @@ dependencies {
     // Coroutines runtime + lifecycle scope for Activities/Fragments.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
+
+    // Firebase Cloud Messaging support for push notifications.
+    implementation(platform("com.google.firebase:firebase-bom:34.10.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-messaging")
 
     // Unit and instrumentation testing libraries.
     testImplementation("junit:junit:4.13.2")

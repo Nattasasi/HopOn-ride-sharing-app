@@ -14,6 +14,7 @@ const mainNav: NavItem[] = [
   { href: '/home', label: 'Home' },
   { href: '/posts', label: 'Browse Rides' },
   { href: '/posts/create', label: 'Create Ride' },
+  { href: '/reports', label: 'Issue Reports' },
 ];
 
 const adminNav: NavItem[] = [

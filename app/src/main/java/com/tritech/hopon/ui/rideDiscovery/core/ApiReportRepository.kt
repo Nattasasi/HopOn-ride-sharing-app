@@ -13,6 +13,11 @@ class ApiReportRepository(private val context: Context) {
             service.createReport(request)
         }.onFailure { Log.e(TAG, "createReport failed", it) }
 
+    suspend fun getMyReports(): Result<List<ApiReport>> =
+        runCatching {
+            service.getMyReports()
+        }.onFailure { Log.e(TAG, "getMyReports failed", it) }
+
     companion object {
         private const val TAG = "ApiReportRepository"
     }
